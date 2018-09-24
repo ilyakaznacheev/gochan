@@ -8,24 +8,18 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const (
-	dbUser    = "gochanuser"
-	dbPass    = "gochanpass"
-	dbName    = "gochandb"
-	dbSSL     = "disable"
-	dbAddress = "localhost"
-)
-
 type dbHandler struct {
 	DB *sql.DB
 }
 
 func getDBConnection() (db *dbHandler, err error) {
-	connStr := "user=" + dbUser +
-		" dbname=" + dbName +
-		" password=" + dbPass +
-		" host=" + dbAddress +
-		" sslmode=" + dbSSL
+	config = getConfig()
+
+	connStr := "user=" + config.Database["dbUser"] +
+		" dbname=" + config.Database["dbName"] +
+		" password=" + config.Database["dbPass"] +
+		" host=" + config.Database["dbAddress"] +
+		" sslmode=" + config.Database["dbSSL"]
 
 	dbConn, err := sql.Open("postgres", connStr)
 	if err != nil {

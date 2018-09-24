@@ -1,0 +1,9 @@
+{
+    "database": {
+        "dbUser": "gochanuser",
+        "dbPass": "gochanpass",
+        "dbName": "gochandb",
+        "dbSSL": "disable",
+        "dbAddress": "localhost"
+    }
+}

@@ -1,0 +1,19 @@
+<html>
+    <body>
+        <h1>{{ .Thread.Title }} | GoChan</h1>
+
+
+        <h2><a href="/{{ .Board.Key }}">Back to /{{ .Board.Key }}</a></h2>        
+    <br>
+    {{ range .Posts}}
+        <h3><a href="/{{ .Key }}">{{ .Key }}</a></h3><br>
+        <p>{{ .Key }}</p> <time>{{ .Time }}</time><br>
+        <p>{{ if .IsOP }}<b>OP</b> {{ end }}<a href="/author/{{ .Author }}">Author</a></p>
+        <p>{{ .Text }}</p><br><br>
+    {{end}}
+    <form action="/thread/{{ .Thread.Key }}" method="post">
+		Post text: <input type="text" name="message">
+		<input type="submit" value="Message">
+	</form>
+    </body>
+</html>

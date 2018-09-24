@@ -1,0 +1,13 @@
+<html>
+    <body>
+        <h1>Posts by author | GoChan</h1>
+
+        <h2><a href="/">Home</a></h2>
+    <br>
+    {{ range .Posts}}
+        <h3><a href="/{{ .Key }}">{{ .Key }}</a></h3><br>
+        <p>{{ .Key }}</p> <time>{{ .Time }}</time><br>
+        <p>{{ .Text }}</p><br><br>
+    {{end}}
+    </body>
+</html>

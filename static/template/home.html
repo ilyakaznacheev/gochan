@@ -1,0 +1,9 @@
+<html>
+    <body>
+        <h1>Welcome to GoChan!!!11</h1>
+    <br>
+    {{ range .Boards}}
+        board: <a href="/{{ .Key }}">{{ .Name }}</a><br>
+    {{end}}
+    </body>
+</html>

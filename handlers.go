@@ -83,8 +83,8 @@ func MainPage(w http.ResponseWriter, r *http.Request) {
 
 	for _, board := range modelData {
 		ctxBoards = append(ctxBoards, MainRepr{
-			Key:  string(board.key),
-			Name: board.name,
+			Key:  string(board.Key),
+			Name: board.Name,
 		})
 	}
 
@@ -112,16 +112,16 @@ func BoardPage(w http.ResponseWriter, r *http.Request) {
 
 	for _, threadItem := range modelData {
 		ctxThreads = append(ctxThreads, BoardRepr{
-			Key:   strconv.Itoa(int(threadItem.key)),
-			Title: threadItem.title,
-			Time:  threadItem.creationDateTime.Format(timeFormat),
+			Key:   strconv.Itoa(int(threadItem.Key)),
+			Title: threadItem.Title,
+			Time:  threadItem.CreationDateTime.Format(timeFormat),
 		})
 	}
 
 	tmpl.Execute(w, struct {
 		Board   BoardReprInfo
 		Threads []BoardRepr
-	}{BoardReprInfo{boardData.name, string(boardData.key)}, ctxThreads})
+	}{BoardReprInfo{boardData.Name, string(boardData.Key)}, ctxThreads})
 }
 
 // ThreadPage returns thread page
@@ -135,23 +135,30 @@ func ThreadPage(w http.ResponseWriter, r *http.Request) {
 	threadData, err := modelCtx.threadModel.getThread(threadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	boardData, err := modelCtx.boardModel.getItem(threadData.boardName)
+
+	boardData, err := modelCtx.boardModel.getItem(threadData.BoardName)
 	if err != nil {
 		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	postData, err := modelCtx.postModel.getPostsByThread(threadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	var ctxThread ThreadRepr
-	ctxThread.Board = ThreadReprBoard{Key: string(boardData.key)}
+	ctxThread.Board = ThreadReprBoard{Key: string(boardData.Key)}
 	ctxThread.Thread = ThreadReprInfo{
-		Key:    strconv.Itoa(int(threadData.key)),
-		Title:  threadData.title,
-		Author: string(threadData.authorID),
+		Key:    strconv.Itoa(int(threadData.Key)),
+		Title:  threadData.Title,
+		Author: string(threadData.AuthorID),
 	}
 
 	ctxThread.Posts = make([]PostRepr, 0, len(postData))
@@ -159,11 +166,11 @@ func ThreadPage(w http.ResponseWriter, r *http.Request) {
 	for _, threadItem := range postData {
 
 		ctxThread.Posts = append(ctxThread.Posts, PostRepr{
-			Key:    string(threadItem.key),
-			Author: string(threadItem.author),
-			Time:   threadItem.creationDateTime.Format(timeFormat),
-			Text:   threadItem.text,
-			IsOP:   threadItem.author == threadData.authorID,
+			Key:    string(threadItem.Key),
+			Author: string(threadItem.Author),
+			Time:   threadItem.CreationDateTime.Format(timeFormat),
+			Text:   threadItem.Text,
+			IsOP:   threadItem.Author == threadData.AuthorID,
 		})
 	}
 
@@ -173,110 +180,110 @@ func ThreadPage(w http.ResponseWriter, r *http.Request) {
 // AddMessage adds new message to thread
 func AddMessage(w http.ResponseWriter, r *http.Request) {
 	requestParams := mux.Vars(r)
-	threadID, _ := strconv.Atoi(requestParams["id"])
+	ThreadID, _ := strconv.Atoi(requestParams["id"])
 
 	authorCookie, err := r.Cookie("author_id")
 
-	var authorID string
+	var AuthorID string
 	loggedIn := (err != http.ErrNoCookie)
 
 	if !loggedIn {
 		expiration := time.Now().Add(1 * time.Minute)
-		authorID = uuid.New().String()
+		AuthorID = uuid.New().String()
 		cookie := http.Cookie{
 			Name:    "author_id",
-			Value:   authorID,
+			Value:   AuthorID,
 			Expires: expiration,
 		}
 		http.SetCookie(w, &cookie)
 	} else {
-		authorID = authorCookie.Value
+		AuthorID = authorCookie.Value
 	}
 
 	inputText := r.FormValue("message")
 
-	log.Println("New message by", authorID, inputText)
+	log.Println("New message by", AuthorID, inputText)
 
 	modelCtx := getModelCtx()
 
-	newPost := post{
-		author:           authorKey(authorID),
-		thread:           threadKey(threadID),
-		creationDateTime: time.Now(),
-		text:             inputText,
+	newPost := Post{
+		Author:           authorKey(AuthorID),
+		Thread:           threadKey(ThreadID),
+		CreationDateTime: time.Now(),
+		Text:             inputText,
 	}
 	_, err = modelCtx.postModel.putPost(newPost)
 	if err != nil {
 		log.Println(err)
 	}
-	http.Redirect(w, r, "/thread/"+strconv.Itoa(threadID), http.StatusFound)
+	http.Redirect(w, r, "/thread/"+strconv.Itoa(ThreadID), http.StatusFound)
 }
 
 // AddThread adds new thread
 func AddThread(w http.ResponseWriter, r *http.Request) {
 	requestParams := mux.Vars(r)
-	boardName := boardKey(requestParams["board"])
+	BoardName := boardKey(requestParams["board"])
 
 	authorCookie, err := r.Cookie("author_id")
 
-	var authorID string
+	var AuthorID string
 	loggedIn := (err != http.ErrNoCookie)
 	if !loggedIn {
 		expiration := time.Now().Add(1 * time.Minute)
-		authorID = uuid.New().String()
+		AuthorID = uuid.New().String()
 		cookie := http.Cookie{
 			Name:    "author_id",
-			Value:   authorID,
+			Value:   AuthorID,
 			Expires: expiration,
 		}
 		http.SetCookie(w, &cookie)
 	} else {
-		authorID = authorCookie.Value
+		AuthorID = authorCookie.Value
 	}
 
 	inputTitle := r.FormValue("title")
 	inputText := r.FormValue("message")
 
-	log.Println("New thread by", authorID, inputTitle)
+	log.Println("New thread by", AuthorID, inputTitle)
 
 	modelCtx := getModelCtx()
 
-	newThread := thread{
-		title:            inputTitle,
-		authorID:         authorKey(authorID),
-		boardName:        boardName,
-		creationDateTime: time.Now(),
+	newThread := Thread{
+		Title:            inputTitle,
+		AuthorID:         authorKey(AuthorID),
+		BoardName:        BoardName,
+		CreationDateTime: time.Now(),
 	}
 
-	threadID, err := modelCtx.threadModel.putThread(newThread)
+	ThreadID, err := modelCtx.threadModel.putThread(newThread)
 	if err != nil {
 		log.Println(err)
 	}
 
-	log.Println("New message by", authorID, inputText)
+	log.Println("New message by", AuthorID, inputText)
 
-	newPost := post{
-		author:           authorKey(authorID),
-		thread:           threadKey(threadID),
-		creationDateTime: time.Now(),
-		text:             inputText,
+	newPost := Post{
+		Author:           authorKey(AuthorID),
+		Thread:           threadKey(ThreadID),
+		CreationDateTime: time.Now(),
+		Text:             inputText,
 	}
 	_, err = modelCtx.postModel.putPost(newPost)
 	if err != nil {
 		log.Println(err)
 	}
-	http.Redirect(w, r, "/"+string(boardName), http.StatusFound)
+	http.Redirect(w, r, "/"+string(BoardName), http.StatusFound)
 }
 
-// AuthorPage returns all messages by author selected
+// AuthorPage returns all messages by Author selected
 func AuthorPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles(templatePath + "author.html"))
 	modelCtx := getModelCtx()
 	requestParams := mux.Vars(r)
 
-	authorID := authorKey(requestParams["author"])
+	AuthorID := authorKey(requestParams["author"])
 
-	authorData, err := modelCtx.postModel.getPostsByAuthor(authorID)
+	authorData, err := modelCtx.postModel.getPostsByAuthor(AuthorID)
 	if err != nil {
 		log.Println(err)
 	}
@@ -288,10 +295,10 @@ func AuthorPage(w http.ResponseWriter, r *http.Request) {
 	for _, postItem := range authorData {
 
 		ctxThread.Posts = append(ctxThread.Posts, PostRepr{
-			Key:    string(postItem.key),
-			Author: string(postItem.author),
-			Time:   postItem.creationDateTime.Format(timeFormat),
-			Text:   postItem.text,
+			Key:    string(postItem.Key),
+			Author: string(postItem.Author),
+			Time:   postItem.CreationDateTime.Format(timeFormat),
+			Text:   postItem.Text,
 			IsOP:   true,
 		})
 	}

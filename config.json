@@ -1,9 +1,14 @@
 {
     "database": {
-        "dbUser": "gochanuser",
-        "dbPass": "gochanpass",
-        "dbName": "gochandb",
-        "dbSSL": "disable",
-        "dbAddress": "localhost"
+        "user": "gochanuser",
+        "pass": "gochanpass",
+        "name": "gochandb",
+        "SSL": "disable",
+        "address": "localhost"
+    },
+    "redis": {
+        "address": "localhost:6379",
+        "password": "",
+        "database": 0
     }
 }

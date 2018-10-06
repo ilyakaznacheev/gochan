@@ -2,30 +2,153 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
+	"strconv"
+	"sync"
 	"time"
 
+	"github.com/go-redis/redis"
 	_ "github.com/lib/pq"
 )
 
-type dbHandler struct {
+const (
+	redisKey           = "goboard"
+	redChangeKey       = "last-change"
+	redBoardKey        = "board-key"
+	redBoardList       = "board-list"
+	redThreadKey       = "thread-key"
+	redThreadBoardKey  = "thread-board"
+	redThreadAuthorKey = "thread-author"
+	redPostKey         = "post-key"
+	redPostAuthorKey   = "post-thread"
+	redPostThreadKey   = "post-thread"
+	redAuthorKey       = "author-key"
+)
+
+var (
+	// ErrRedisCacheVersion error while redis cache version check
+	ErrRedisCacheVersion = errors.New("cache outdated")
+)
+
+// RedisContainer is a redis main container structure
+type RedisContainer struct {
+	Version int
+	Content string
+}
+
+type redisClient struct {
+	client *redis.Client
+	// input  chan redisAction
+	// finish context.CancelFunc
+}
+
+func (rc *redisClient) get(entity, key string) (string, error) {
+	version, _ := rc.getChangeCounter(entity)
+	entityKey := fmt.Sprintf("%s:%s:%s", redisKey, entity, key)
+	responseData, err := rc.client.Get(entityKey).Result()
+	if err != nil {
+		return "", err
+	}
+
+	container := &RedisContainer{}
+	json.Unmarshal([]byte(responseData), container)
+	if version > container.Version {
+		return "", ErrRedisCacheVersion
+	}
+	return container.Content, nil
+}
+
+func (rc *redisClient) set(entity, Key, requestData string, version int) error {
+	entityKey := fmt.Sprintf("%s:%s:%s", redisKey, entity, Key)
+
+	container := &RedisContainer{
+		Version: version,
+		Content: requestData,
+	}
+	requestJSON, err := json.Marshal(container)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = rc.client.Set(entityKey, string(requestJSON), 0).Err()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (rc *redisClient) updateChangeCounter(entity string) int {
+	entityKey := fmt.Sprintf("%s:%s:%s", redisKey, entity, redChangeKey)
+	counter, err := rc.client.Incr(entityKey).Result()
+	if err != nil {
+		log.Println(err)
+	}
+
+	return int(counter)
+}
+
+func (rc *redisClient) getChangeCounter(entity string) (int, error) {
+	entityKey := fmt.Sprintf("%s:%s:%s", redisKey, entity, redChangeKey)
+	counterStr, err := rc.client.Get(entityKey).Result()
+	if err != nil {
+		return 0, err
+	}
+	counter, err := strconv.Atoi(counterStr)
+	if err != nil {
+		log.Panic(err)
+	}
+	return counter, nil
+}
+
+func newRedisClient(config *ConfigData) *redisClient {
+	client := redis.NewClient(&redis.Options{
+		Addr:     config.Redis.Address,
+		Password: config.Redis.Password,
+		DB:       config.Redis.DataBase,
+	})
+	return &redisClient{client}
+}
+
+type pgClient struct {
 	DB *sql.DB
 }
 
-func getDBConnection() (db *dbHandler, err error) {
-	config = getConfig()
+func newPGClient(config *ConfigData) (db *pgClient, err error) {
+	// config = getConfig()
 
-	connStr := "user=" + config.Database["dbUser"] +
-		" dbname=" + config.Database["dbName"] +
-		" password=" + config.Database["dbPass"] +
-		" host=" + config.Database["dbAddress"] +
-		" sslmode=" + config.Database["dbSSL"]
+	connStr := fmt.Sprintf(
+		"user=%s dbname=%s password=%s host=%s sslmode=%s",
+		config.Database.User,
+		config.Database.Name,
+		config.Database.Pass,
+		config.Database.Address,
+		config.Database.SSL,
+	)
 
 	dbConn, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
 	}
-	return &dbHandler{dbConn}, nil
+	return &pgClient{dbConn}, nil
+}
+
+type repoHandler struct {
+	redis *redisClient
+	pg    *pgClient
+}
+
+func newRepoHandler(config *ConfigData) *repoHandler {
+	redis := newRedisClient(config)
+	pg, err := newPGClient(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &repoHandler{
+		redis: redis,
+		pg:    pg,
+	}
 }
 
 type (
@@ -35,86 +158,179 @@ type (
 	authorKey string
 )
 
-type board struct {
-	key  boardKey
-	name string
+func (key threadKey) String() string {
+	return fmt.Sprintf("%d", key)
+}
+
+func (key postKey) String() string {
+	return fmt.Sprintf("%d", key)
+}
+
+// Board is a db structure of board table
+type Board struct {
+	Key  boardKey
+	Name string
 }
 
 type boardModel struct {
-	// boardSet []board
-	dbConn *dbHandler
+	repoConnection *repoHandler
 }
 
-func (m *boardModel) getList() (boardList []*board) {
-	rows, err := m.dbConn.DB.Query(`SELECT key, name FROM board`)
+func (m *boardModel) getList() (boardList []*Board) {
+	var boardListCache []Board
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redBoardList, "")
+	if err == nil {
+		boardListCache = make([]Board, 0)
+		json.Unmarshal([]byte(cachedData), &boardListCache)
+
+		for idx := range boardListCache {
+			boardList = append(boardList, &boardListCache[idx])
+		}
+
+		return boardList
+	}
+
+	// read from db
+	rows, err := m.repoConnection.pg.DB.Query(`SELECT key, name FROM board`)
 	if err != nil {
 		panic(err)
 	}
-	boardList = make([]*board, 0)
+	boardList = make([]*Board, 0)
 	for rows.Next() {
-		boardItem := &board{}
-		err = rows.Scan(&boardItem.key, &boardItem.name)
+		boardItem := &Board{}
+		err = rows.Scan(&boardItem.Key, &boardItem.Name)
 		boardList = append(boardList, boardItem)
 	}
 	rows.Close()
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redBoardList)
+
+	boardListCache = make([]Board, 0, len(boardList))
+	for idx := range boardList {
+		boardListCache = append(boardListCache, *boardList[idx])
+	}
+	newCachedData, err := json.Marshal(&boardListCache)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redBoardList,
+		"",
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return boardList
 }
 
-func (m *boardModel) getItem(name boardKey) (*board, error) {
-	row := m.dbConn.DB.QueryRow(
+func (m *boardModel) getItem(name boardKey) (*Board, error) {
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redBoardKey, string(name))
+	if err == nil {
+		boardCache := &Board{}
+		json.Unmarshal([]byte(cachedData), boardCache)
+
+		return boardCache, nil
+	}
+
+	// read from db
+	row := m.repoConnection.pg.DB.QueryRow(
 		`SELECT key, name 
-		FROM board
-		WHERE key = $1`,
-		name)
-	boardItem := &board{}
-	err := row.Scan(
-		&boardItem.key,
-		&boardItem.name,
+			FROM board
+			WHERE key = $1`,
+		name,
+	)
+	boardItem := &Board{}
+	err = row.Scan(
+		&boardItem.Key,
+		&boardItem.Name,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redBoardKey)
+
+	newCachedData, err := json.Marshal(boardItem)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redBoardKey,
+		string(name),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return boardItem, nil
 }
 
-func getBoardModel(dbConn *dbHandler) *boardModel {
+func newBoardModel(repoConnection *repoHandler) *boardModel {
 	return &boardModel{
-		dbConn: dbConn,
+		repoConnection: repoConnection,
 	}
 }
 
-type thread struct {
-	key              threadKey
-	title            string
-	authorID         authorKey
-	boardName        boardKey
-	creationDateTime time.Time
+// Thread is a db structure of thread table
+type Thread struct {
+	Key              threadKey
+	Title            string
+	AuthorID         authorKey
+	BoardName        boardKey
+	CreationDateTime time.Time
 }
 
 type threadModel struct {
-	// ThreadSet []thread
-	dbConn *dbHandler
+	repoConnection *repoHandler
 }
 
-func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*thread, error) {
-	rows, err := m.dbConn.DB.Query(
+func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*Thread, error) {
+	var (
+		threadListCache []Thread
+		threadList      []*Thread
+	)
+
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redThreadBoardKey, string(boardName))
+	if err == nil {
+		threadListCache = make([]Thread, 0)
+		json.Unmarshal([]byte(cachedData), &threadListCache)
+
+		for idx := range threadListCache {
+			threadList = append(threadList, &threadListCache[idx])
+		}
+		return threadList, nil
+	}
+
+	// read from db
+	rows, err := m.repoConnection.pg.DB.Query(
 		`SELECT key, title, authorid, boardname, creationdatetime 
 			FROM thread
 			WHERE boardname = $1`,
-		boardName)
+		boardName,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	threadList := make([]*thread, 0)
+	threadList = make([]*Thread, 0)
 	for rows.Next() {
-		threadItem := &thread{}
+		threadItem := &Thread{}
 		err = rows.Scan(
-			&threadItem.key,
-			&threadItem.title,
-			&threadItem.authorID,
-			&threadItem.boardName,
-			&threadItem.creationDateTime,
+			&threadItem.Key,
+			&threadItem.Title,
+			&threadItem.AuthorID,
+			&threadItem.BoardName,
+			&threadItem.CreationDateTime,
 		)
 		threadList = append(threadList, threadItem)
 	}
@@ -123,72 +339,162 @@ func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*thread, error) {
 	if len(threadList) == 0 {
 		return nil, errors.New("no threads found with board name " + string(boardName))
 	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadBoardKey)
+
+	threadListCache = make([]Thread, 0, len(threadList))
+	for idx := range threadList {
+		threadListCache = append(threadListCache, *threadList[idx])
+	}
+	newCachedData, err := json.Marshal(&threadListCache)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redThreadBoardKey,
+		string(boardName),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return threadList, nil
 }
 
-func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*thread, error) {
-	rows, err := m.dbConn.DB.Query(
+func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*Thread, error) {
+	var (
+		threadListCache []Thread
+		threadList      []*Thread
+	)
+
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redThreadAuthorKey, string(authorID))
+	if err == nil {
+		threadListCache = make([]Thread, 0)
+		json.Unmarshal([]byte(cachedData), &threadListCache)
+
+		for idx := range threadListCache {
+			threadList = append(threadList, &threadListCache[idx])
+		}
+		return threadList, nil
+	}
+
+	// read from db
+	rows, err := m.repoConnection.pg.DB.Query(
 		`SELECT key, title, authorid, boardname, creationdatetime 
 			FROM thread
 			WHERE authorid = $1`,
-		authorID)
+		authorID,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	threadList := make([]*thread, 0)
+	threadList = make([]*Thread, 0)
 	for rows.Next() {
-		threadItem := &thread{}
+		threadItem := &Thread{}
 		err = rows.Scan(
-			&threadItem.key,
-			&threadItem.title,
-			&threadItem.authorID,
-			&threadItem.boardName,
-			&threadItem.creationDateTime,
+			&threadItem.Key,
+			&threadItem.Title,
+			&threadItem.AuthorID,
+			&threadItem.BoardName,
+			&threadItem.CreationDateTime,
 		)
 		threadList = append(threadList, threadItem)
 	}
 	rows.Close()
 
 	if len(threadList) == 0 {
-		return nil, errors.New("no threads found with author ID" + string(authorID))
+		return nil, errors.New("no threads found with author ID " + string(authorID))
 	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadAuthorKey)
+
+	threadListCache = make([]Thread, 0, len(threadList))
+	for idx := range threadList {
+		threadListCache = append(threadListCache, *threadList[idx])
+	}
+	newCachedData, err := json.Marshal(&threadListCache)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redThreadAuthorKey,
+		string(authorID),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return threadList, nil
 }
 
-func (m *threadModel) getThread(threadID threadKey) (*thread, error) {
-	row := m.dbConn.DB.QueryRow(
+func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
+	var threadCache *Thread
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redThreadKey, threadID.String())
+	if err == nil {
+		threadCache = &Thread{}
+		json.Unmarshal([]byte(cachedData), threadCache)
+
+		return threadCache, nil
+	}
+
+	// read from db
+	row := m.repoConnection.pg.DB.QueryRow(
 		`SELECT key, title, authorid, boardname, creationdatetime 
 			FROM thread
 			WHERE key = $1`,
-		threadID)
-	threadItem := &thread{}
-	err := row.Scan(
-		&threadItem.key,
-		&threadItem.title,
-		&threadItem.authorID,
-		&threadItem.boardName,
-		&threadItem.creationDateTime,
+		threadID,
+	)
+	threadItem := &Thread{}
+	err = row.Scan(
+		&threadItem.Key,
+		&threadItem.Title,
+		&threadItem.AuthorID,
+		&threadItem.BoardName,
+		&threadItem.CreationDateTime,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadKey)
+
+	newCachedData, err := json.Marshal(threadItem)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redThreadKey,
+		threadID.String(),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return threadItem, nil
 }
 
-func (m *threadModel) putThread(newThread thread) (threadKey, error) {
-	row := m.dbConn.DB.QueryRow(
+func (m *threadModel) putThread(newThread Thread) (threadKey, error) {
+	row := m.repoConnection.pg.DB.QueryRow(
 		`INSERT INTO thread (key, title, authorid, boardname, creationdatetime ) VALUES (
 			nextval('thread_key_seq'),
-			$1, 
-			$2, 
-			$3, 
-			$4
+			$1, $2, $3, $4
 			) RETURNING key;`,
-		newThread.title,
-		newThread.authorID,
-		newThread.boardName,
-		newThread.creationDateTime,
+		newThread.Title,
+		newThread.AuthorID,
+		newThread.BoardName,
+		newThread.CreationDateTime,
 	)
 
 	var index threadKey
@@ -197,123 +503,235 @@ func (m *threadModel) putThread(newThread thread) (threadKey, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// update cache version
+	m.repoConnection.redis.updateChangeCounter(redThreadBoardKey)
+	m.repoConnection.redis.updateChangeCounter(redThreadAuthorKey)
+	m.repoConnection.redis.updateChangeCounter(redThreadKey)
+
 	return index, nil
 }
 
-// func (m *threadModel) GetLastThreads(number int) []thread {
-// }
-
-func getThreadModel(dbConn *dbHandler) *threadModel {
+func newThreadModel(repoConnection *repoHandler) *threadModel {
 	return &threadModel{
-		dbConn: dbConn,
+		repoConnection: repoConnection,
 	}
 }
 
-type post struct {
-	key              postKey
-	author           authorKey
-	thread           threadKey
-	creationDateTime time.Time
-	text             string
+// Post is a db structure of post table
+type Post struct {
+	Key              postKey
+	Author           authorKey
+	Thread           threadKey
+	CreationDateTime time.Time
+	Text             string
 }
 
 type postModel struct {
-	// PostSet []post
-	dbConn *dbHandler
+	repoConnection *repoHandler
 }
 
-func (m *postModel) getPostsByThread(threadID threadKey) ([]*post, error) {
-	rows, err := m.dbConn.DB.Query(
-		`SELECT key, author, thread, creationdatetime, text
+func (m *postModel) getPostsByThread(threadID threadKey) ([]*Post, error) {
+	var (
+		postListCache []Post
+		postList      []*Post
+	)
+
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redPostThreadKey, threadID.String())
+	if err == nil {
+		postListCache = make([]Post, 0)
+		json.Unmarshal([]byte(cachedData), &postListCache)
+
+		for idx := range postListCache {
+			postList = append(postList, &postListCache[idx])
+		}
+		return postList, nil
+	}
+
+	// read from db
+	rows, err := m.repoConnection.pg.DB.Query(
+		`SELECT Key, Author, Thread, creationdatetime, Text
 			FROM post
 			WHERE thread = $1`,
-		threadID)
-	if err != nil {
-		return nil, err
-	}
-
-	postList := make([]*post, 0)
-	for rows.Next() {
-		postItem := &post{}
-		err = rows.Scan(
-			&postItem.key,
-			&postItem.author,
-			&postItem.thread,
-			&postItem.creationDateTime,
-			&postItem.text,
-		)
-		postList = append(postList, postItem)
-	}
-	rows.Close()
-
-	if len(postList) == 0 {
-		return nil, errors.New("no posts found with thread ID" + string(threadID))
-	}
-	return postList, nil
-}
-
-func (m *postModel) getPostsByAuthor(authorID authorKey) ([]*post, error) {
-	rows, err := m.dbConn.DB.Query(
-		`SELECT key, author, thread, creationdatetime, text
-			FROM post
-			WHERE author = $1`,
-		authorID)
-	if err != nil {
-		return nil, err
-	}
-
-	postList := make([]*post, 0)
-	for rows.Next() {
-		postItem := &post{}
-		err = rows.Scan(
-			&postItem.key,
-			&postItem.author,
-			&postItem.thread,
-			&postItem.creationDateTime,
-			&postItem.text,
-		)
-		postList = append(postList, postItem)
-	}
-	rows.Close()
-
-	if len(postList) == 0 {
-		return nil, errors.New("no posts found with author ID" + string(authorID))
-	}
-	return postList, nil
-}
-
-func (m *postModel) getPost(postID postKey) (*post, error) {
-	row := m.dbConn.DB.QueryRow(
-		`SELECT key, author, thread, creationdatetime, text
-		FROM post
-			WHERE key = $1`,
-		postID)
-	postItem := &post{}
-	err := row.Scan(
-		&postItem.key,
-		&postItem.author,
-		&postItem.thread,
-		&postItem.creationDateTime,
-		&postItem.text,
+		threadID,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	postList = make([]*Post, 0)
+	for rows.Next() {
+		postItem := &Post{}
+		err = rows.Scan(
+			&postItem.Key,
+			&postItem.Author,
+			&postItem.Thread,
+			&postItem.CreationDateTime,
+			&postItem.Text,
+		)
+		postList = append(postList, postItem)
+	}
+	rows.Close()
+
+	if len(postList) == 0 {
+		return nil, errors.New("no posts found with Thread ID" + threadID.String())
+	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostThreadKey)
+
+	postListCache = make([]Post, 0, len(postList))
+	for idx := range postList {
+		postListCache = append(postListCache, *postList[idx])
+	}
+	newCachedData, err := json.Marshal(&postListCache)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redPostThreadKey,
+		threadID.String(),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return postList, nil
+}
+
+func (m *postModel) getPostsByAuthor(AuthorID authorKey) ([]*Post, error) {
+	var (
+		postListCache []Post
+		postList      []*Post
+	)
+
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redPostAuthorKey, string(AuthorID))
+	if err == nil {
+		postListCache = make([]Post, 0)
+		json.Unmarshal([]byte(cachedData), &postListCache)
+
+		for idx := range postListCache {
+			postList = append(postList, &postListCache[idx])
+		}
+		return postList, nil
+	}
+
+	// read from db
+	rows, err := m.repoConnection.pg.DB.Query(
+		`SELECT Key, Author, Thread, creationdatetime, Text
+			FROM post
+			WHERE author = $1`,
+		AuthorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	postList = make([]*Post, 0)
+	for rows.Next() {
+		postItem := &Post{}
+		err = rows.Scan(
+			&postItem.Key,
+			&postItem.Author,
+			&postItem.Thread,
+			&postItem.CreationDateTime,
+			&postItem.Text,
+		)
+		postList = append(postList, postItem)
+	}
+	rows.Close()
+
+	if len(postList) == 0 {
+		return nil, errors.New("no posts found with Author ID " + string(AuthorID))
+	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostAuthorKey)
+
+	postListCache = make([]Post, 0, len(postList))
+	for idx := range postList {
+		postListCache = append(postListCache, *postList[idx])
+	}
+	newCachedData, err := json.Marshal(&postListCache)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redPostAuthorKey,
+		string(AuthorID),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return postList, nil
+}
+
+func (m *postModel) getPost(postID postKey) (*Post, error) {
+	var postCache *Post
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redPostKey, postID.String())
+	if err == nil {
+		postCache = &Post{}
+		json.Unmarshal([]byte(cachedData), postCache)
+
+		return postCache, nil
+	}
+
+	// read from db
+	row := m.repoConnection.pg.DB.QueryRow(
+		`SELECT Key, Author, Thread, creationdatetime, Text
+			FROM post
+			WHERE key = $1`,
+		postID,
+	)
+	postItem := &Post{}
+	err = row.Scan(
+		&postItem.Key,
+		&postItem.Author,
+		&postItem.Thread,
+		&postItem.CreationDateTime,
+		&postItem.Text,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostKey)
+
+	newCachedData, err := json.Marshal(postItem)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redPostKey,
+		postID.String(),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return postItem, nil
 }
 
-func (m *postModel) putPost(newPost post) (postKey, error) {
-	row := m.dbConn.DB.QueryRow(
-		`INSERT INTO post (author, thread, creationdatetime, text) VALUES (
-			$1, 
-			$2, 
-			$3, 
-			$4
+func (m *postModel) putPost(newPost Post) (postKey, error) {
+	row := m.repoConnection.pg.DB.QueryRow(
+		`INSERT INTO post (Author, Thread, creationdatetime, Text) VALUES (
+			$1, $2, $3, $4
 			) RETURNING key;`,
-		newPost.author,
-		newPost.thread,
-		newPost.creationDateTime,
-		newPost.text,
+		newPost.Author,
+		newPost.Thread,
+		newPost.CreationDateTime,
+		newPost.Text,
 	)
 
 	var index postKey
@@ -322,68 +740,106 @@ func (m *postModel) putPost(newPost post) (postKey, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	m.repoConnection.redis.updateChangeCounter(redPostAuthorKey)
+	m.repoConnection.redis.updateChangeCounter(redPostThreadKey)
+	m.repoConnection.redis.updateChangeCounter(redPostKey)
+
 	return index, nil
 }
 
-func getPostModel(dbConn *dbHandler) *postModel {
+func newPostModel(repoConnection *repoHandler) *postModel {
 	return &postModel{
-		dbConn: dbConn,
+		repoConnection: repoConnection,
 	}
 }
 
-type author struct {
-	key authorKey
+// Author is a db structure of author table
+type Author struct {
+	Key authorKey
 	// AdminRole bool
 }
 
 type authorModel struct {
-	// authorSet []author
-	dbConn *dbHandler
+	repoConnection *repoHandler
 }
 
-func (m *authorModel) getAuthor(authorID authorKey) (*author, error) {
-	row := m.dbConn.DB.QueryRow(
-		`SELECT key
-		FROM author
+func (m *authorModel) getAuthor(authorID authorKey) (*Author, error) {
+	var authorCache *Author
+	// read from cache
+	cachedData, err := m.repoConnection.redis.get(redAuthorKey, string(authorID))
+	if err == nil {
+		authorCache = &Author{}
+		json.Unmarshal([]byte(cachedData), authorCache)
+
+		return authorCache, nil
+	}
+
+	// read from db
+	row := m.repoConnection.pg.DB.QueryRow(
+		`SELECT Key
+			FROM puthor
 			WHERE key = $1`,
-		authorID)
-	authorItem := &author{}
-	err := row.Scan(
-		&authorItem.key,
+		authorID,
+	)
+	authorItem := &Author{}
+	err = row.Scan(
+		&authorItem.Key,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// update cache
+	cacheVersion := m.repoConnection.redis.updateChangeCounter(redAuthorKey)
+
+	newCachedData, err := json.Marshal(authorItem)
+	if err != nil {
+		log.Panic(err)
+	}
+	err = m.repoConnection.redis.set(
+		redAuthorKey,
+		string(authorID),
+		string(newCachedData),
+		cacheVersion,
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	return authorItem, nil
 }
 
-func getAuthorModel(dbConn *dbHandler) *authorModel {
+func newAuthorModel(repoConnection *repoHandler) *authorModel {
 	return &authorModel{
-		dbConn: dbConn,
+		repoConnection: repoConnection,
 	}
 }
 
 type modelContext struct {
-	dbConnection *dbHandler
-	boardModel   *boardModel
-	threadModel  *threadModel
-	postModel    *postModel
-	authorModel  *authorModel
+	repoConnection *repoHandler
+	boardModel     *boardModel
+	threadModel    *threadModel
+	postModel      *postModel
+	authorModel    *authorModel
 }
 
+var context *modelContext
+var contextSingleton sync.Once
+
 func getmodelContext() *modelContext {
-	dbConn, err := getDBConnection()
-	if err != nil {
-		panic(err)
-	}
+	contextSingleton.Do(func() {
+		config := getConfig()
+		repoHnd := newRepoHandler(config)
 
-	modelContext := &modelContext{
-		dbConnection: dbConn,
-		boardModel:   getBoardModel(dbConn),
-		threadModel:  getThreadModel(dbConn),
-		postModel:    getPostModel(dbConn),
-		authorModel:  getAuthorModel(dbConn),
-	}
+		context = &modelContext{
+			repoConnection: repoHnd,
+			boardModel:     newBoardModel(repoHnd),
+			threadModel:    newThreadModel(repoHnd),
+			postModel:      newPostModel(repoHnd),
+			authorModel:    newAuthorModel(repoHnd),
+		}
+	})
 
-	return modelContext
+	return context
 }

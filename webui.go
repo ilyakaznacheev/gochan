@@ -3,9 +3,25 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gorilla/mux"
 )
+
+// gracefulShutdown handle program interrupt by user
+func gracefulShutdown() {
+	var signalChan = make(chan os.Signal)
+	signal.Notify(signalChan, syscall.SIGTERM)
+	signal.Notify(signalChan, syscall.SIGINT)
+
+	go func() {
+		<-signalChan
+		log.Println("stopping server")
+		os.Exit(0)
+	}()
+}
 
 func runServer() {
 	router := mux.NewRouter()
@@ -17,10 +33,12 @@ func runServer() {
 	router.HandleFunc("/author/{author}", AuthorPage)
 	router.HandleFunc("/", MainPage)
 
+	gracefulShutdown()
+
 	log.Println("starting server...")
 	err := http.ListenAndServe(":8000", router)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
 

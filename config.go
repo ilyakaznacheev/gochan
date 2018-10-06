@@ -12,7 +12,19 @@ const (
 
 // ConfigData contains app configuration data
 type ConfigData struct {
-	Database map[string]string
+	Database struct {
+		User    string
+		Name    string
+		Pass    string
+		Address string
+		SSL     string
+	}
+	// map[string]string
+	Redis struct {
+		Address  string
+		Password string
+		DataBase int
+	}
 }
 
 var config *ConfigData

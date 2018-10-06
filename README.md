@@ -6,12 +6,12 @@
 - Gorilla multiplexer usage
 - Built-in template usage
 - Logging
+- Caching
 
 ### What is planned to do:
 
 - Unit tests
 - More multi-access stability
-- Caching
 - Modern React Frontend
 - GraphQL
 - Some hot updates via WS

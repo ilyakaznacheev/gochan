@@ -24,14 +24,21 @@ func gracefulShutdown() {
 }
 
 func runServer() {
+	modelCtx := getmodelContext()
+	requestHandler := newRequestHandler(modelCtx)
+
 	router := mux.NewRouter()
-	router.HandleFunc("/admin", AdminPage)
-	router.HandleFunc("/{board}", BoardPage).Methods("GET")
-	router.HandleFunc("/{board}", AddThread).Methods("POST")
-	router.HandleFunc("/thread/{id:[0-9]+}", ThreadPage).Methods("GET")
-	router.HandleFunc("/thread/{id:[0-9]+}", AddMessage).Methods("POST")
-	router.HandleFunc("/author/{author}", AuthorPage)
-	router.HandleFunc("/", MainPage)
+
+	router.HandleFunc("/admin", requestHandler.AdminPage)
+	router.HandleFunc("/{board}", requestHandler.BoardPage).Methods("GET")
+	router.HandleFunc("/{board}", requestHandler.AddThread).Methods("POST")
+	router.HandleFunc("/thread/{id:[0-9]+}", requestHandler.ThreadPage).Methods("GET")
+	router.HandleFunc("/thread/{id:[0-9]+}", requestHandler.AddMessage).Methods("POST")
+	router.HandleFunc("/author/{author}", requestHandler.AuthorPage)
+	router.HandleFunc("/", requestHandler.MainPage)
+
+	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	router.PathPrefix("/media/").Handler(http.StripPrefix("/media/", http.FileServer(http.Dir("./media"))))
 
 	gracefulShutdown()
 

@@ -6,13 +6,17 @@
     <br>
     {{ range .Threads}}
         <h3><a href="/thread/{{ .Key }}">{{ .Title }}</a></h3><br>
+        {{ if .HasImage }}<a href="/{{ .ImagePath }}">
+            <img src="/{{ .ImagePath }}" width="100px" height="100px">
+        </a>{{ end }}
         <p>{{ .Key }}</p> <time>{{ .Time }}</time><br><br>
     {{end}}
-    <form action="/{{ .Board.Key }}" method="post">
-        Post thread: 
-        <input type="text" name="title">
-        <input type="text" name="message">
-		<input type="submit" value="Message">
+    <form action="/{{ .Board.Key }}" enctype="multipart/form-data" method="post">
+        Post thread: <br>
+        Title: <input type="text" name="title"><br>
+        Text: <input type="text" name="message"><br>
+        Image: <input type="file" name="picture"><br>
+		<input type="submit" value="Post thread">
 	</form>
     </body>
 </html>

@@ -6,14 +6,18 @@
         <h2><a href="/{{ .Board.Key }}">Back to /{{ .Board.Key }}</a></h2>        
     <br>
     {{ range .Posts}}
-        <h3><a href="/{{ .Key }}">{{ .Key }}</a></h3><br>
-        <p>{{ .Key }}</p> <time>{{ .Time }}</time><br>
+        <h3>{{ .Key }}</h3><br>
+        <time>{{ .Time }}</time><br>
+        {{ if .HasImage }}<a href="/{{ .ImagePath }}">
+            <img src="/{{ .ImagePath }}" width="100px" height="100px">
+        </a>{{ end }}
         <p>{{ if .IsOP }}<b>OP</b> {{ end }}<a href="/author/{{ .Author }}">Author</a></p>
         <p>{{ .Text }}</p><br><br>
     {{end}}
-    <form action="/thread/{{ .Thread.Key }}" method="post">
-		Post text: <input type="text" name="message">
-		<input type="submit" value="Message">
+    <form action="/thread/{{ .Thread.Key }}" enctype="multipart/form-data" method="post">
+        Post text: <input type="text" name="message"><br>
+        Image: <input type="file" name="picture"><br>
+		<input type="submit" value="Post message">
 	</form>
     </body>
 </html>

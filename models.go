@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/go-redis/redis"
 	_ "github.com/lib/pq"
 )
@@ -156,6 +158,7 @@ type (
 	threadKey int
 	postKey   int
 	authorKey string
+	imageKey  uuid.UUID
 )
 
 func (key threadKey) String() string {
@@ -287,6 +290,16 @@ type Thread struct {
 	AuthorID         authorKey
 	BoardName        boardKey
 	CreationDateTime time.Time
+	ImageKey         *uuid.UUID //sql.NullString
+	ImagePath        *string
+}
+
+func (t *Thread) getImagePath() string {
+	if t.ImagePath != nil {
+		return *t.ImagePath
+	} else {
+		return ""
+	}
 }
 
 type threadModel struct {
@@ -313,9 +326,11 @@ func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*Thread, error) {
 
 	// read from db
 	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT key, title, authorid, boardname, creationdatetime 
+		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
 			FROM thread
-			WHERE boardname = $1`,
+				LEFT OUTER JOIN image ON
+				(thread.image = image.key)
+			WHERE thread.boardname = $1`,
 		boardName,
 	)
 	if err != nil {
@@ -331,6 +346,7 @@ func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*Thread, error) {
 			&threadItem.AuthorID,
 			&threadItem.BoardName,
 			&threadItem.CreationDateTime,
+			&threadItem.ImagePath,
 		)
 		threadList = append(threadList, threadItem)
 	}
@@ -384,9 +400,11 @@ func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*Thread, error) 
 
 	// read from db
 	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT key, title, authorid, boardname, creationdatetime 
+		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
 			FROM thread
-			WHERE authorid = $1`,
+				LEFT OUTER JOIN image ON
+				(thread.image = image.key)
+			WHERE thread.authorid = $1`,
 		authorID,
 	)
 	if err != nil {
@@ -402,6 +420,7 @@ func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*Thread, error) 
 			&threadItem.AuthorID,
 			&threadItem.BoardName,
 			&threadItem.CreationDateTime,
+			&threadItem.ImagePath,
 		)
 		threadList = append(threadList, threadItem)
 	}
@@ -448,9 +467,11 @@ func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
 
 	// read from db
 	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT key, title, authorid, boardname, creationdatetime 
+		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
 			FROM thread
-			WHERE key = $1`,
+				LEFT OUTER JOIN image ON
+				(thread.image = image.key)
+			WHERE thread.key = $1`,
 		threadID,
 	)
 	threadItem := &Thread{}
@@ -460,6 +481,7 @@ func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
 		&threadItem.AuthorID,
 		&threadItem.BoardName,
 		&threadItem.CreationDateTime,
+		&threadItem.ImagePath,
 	)
 	if err != nil {
 		return nil, err
@@ -486,15 +508,21 @@ func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
 }
 
 func (m *threadModel) putThread(newThread Thread) (threadKey, error) {
+	var imageKeyStr *string
+	if newThread.ImageKey != nil {
+		strval := newThread.ImageKey.String()
+		imageKeyStr = &strval
+	}
 	row := m.repoConnection.pg.DB.QueryRow(
-		`INSERT INTO thread (key, title, authorid, boardname, creationdatetime ) VALUES (
+		`INSERT INTO thread (key, title, authorid, boardname, creationdatetime, image ) VALUES (
 			nextval('thread_key_seq'),
-			$1, $2, $3, $4
+			$1, $2, $3, $4, $5
 			) RETURNING key;`,
 		newThread.Title,
 		newThread.AuthorID,
 		newThread.BoardName,
 		newThread.CreationDateTime,
+		imageKeyStr,
 	)
 
 	var index threadKey
@@ -525,6 +553,16 @@ type Post struct {
 	Thread           threadKey
 	CreationDateTime time.Time
 	Text             string
+	ImageKey         *uuid.UUID //sql.NullString
+	ImagePath        *string
+}
+
+func (p *Post) getImagePath() string {
+	if p.ImagePath != nil {
+		return *p.ImagePath
+	} else {
+		return ""
+	}
 }
 
 type postModel struct {
@@ -551,9 +589,11 @@ func (m *postModel) getPostsByThread(threadID threadKey) ([]*Post, error) {
 
 	// read from db
 	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT Key, Author, Thread, creationdatetime, Text
+		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
 			FROM post
-			WHERE thread = $1`,
+				LEFT OUTER JOIN image ON
+				(post.image = image.key)
+			WHERE post.thread = $1`,
 		threadID,
 	)
 	if err != nil {
@@ -569,6 +609,7 @@ func (m *postModel) getPostsByThread(threadID threadKey) ([]*Post, error) {
 			&postItem.Thread,
 			&postItem.CreationDateTime,
 			&postItem.Text,
+			&postItem.ImagePath,
 		)
 		postList = append(postList, postItem)
 	}
@@ -622,9 +663,11 @@ func (m *postModel) getPostsByAuthor(AuthorID authorKey) ([]*Post, error) {
 
 	// read from db
 	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT Key, Author, Thread, creationdatetime, Text
+		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
 			FROM post
-			WHERE author = $1`,
+				LEFT OUTER JOIN image ON
+				(post.image = image.key)
+			WHERE post.author = $1`,
 		AuthorID,
 	)
 	if err != nil {
@@ -640,6 +683,7 @@ func (m *postModel) getPostsByAuthor(AuthorID authorKey) ([]*Post, error) {
 			&postItem.Thread,
 			&postItem.CreationDateTime,
 			&postItem.Text,
+			&postItem.ImagePath,
 		)
 		postList = append(postList, postItem)
 	}
@@ -686,9 +730,11 @@ func (m *postModel) getPost(postID postKey) (*Post, error) {
 
 	// read from db
 	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT Key, Author, Thread, creationdatetime, Text
+		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
 			FROM post
-			WHERE key = $1`,
+				LEFT OUTER JOIN image ON
+				(post.image = image.key)
+			WHERE post.key = $1`,
 		postID,
 	)
 	postItem := &Post{}
@@ -698,6 +744,7 @@ func (m *postModel) getPost(postID postKey) (*Post, error) {
 		&postItem.Thread,
 		&postItem.CreationDateTime,
 		&postItem.Text,
+		&postItem.ImagePath,
 	)
 	if err != nil {
 		return nil, err
@@ -724,14 +771,20 @@ func (m *postModel) getPost(postID postKey) (*Post, error) {
 }
 
 func (m *postModel) putPost(newPost Post) (postKey, error) {
+	var imageKeyStr *string
+	if newPost.ImageKey != nil {
+		strval := newPost.ImageKey.String()
+		imageKeyStr = &strval
+	}
 	row := m.repoConnection.pg.DB.QueryRow(
-		`INSERT INTO post (Author, Thread, creationdatetime, Text) VALUES (
-			$1, $2, $3, $4
+		`INSERT INTO post (author, thread, creationdatetime, text, image) VALUES (
+			$1, $2, $3, $4, $5
 			) RETURNING key;`,
 		newPost.Author,
 		newPost.Thread,
 		newPost.CreationDateTime,
 		newPost.Text,
+		imageKeyStr,
 	)
 
 	var index postKey
@@ -778,7 +831,7 @@ func (m *authorModel) getAuthor(authorID authorKey) (*Author, error) {
 	// read from db
 	row := m.repoConnection.pg.DB.QueryRow(
 		`SELECT Key
-			FROM puthor
+			FROM author
 			WHERE key = $1`,
 		authorID,
 	)
@@ -816,12 +869,60 @@ func newAuthorModel(repoConnection *repoHandler) *authorModel {
 	}
 }
 
+// Image is a db structure of image table
+type Image struct {
+	Key      imageKey
+	FilePath string
+}
+
+type imageModel struct {
+	repoConnection *repoHandler
+}
+
+func (m *imageModel) isImageExist(image imageKey) bool {
+	row := m.repoConnection.pg.DB.QueryRow(
+		`SELECT EXISTS( SELECT 1
+			FROM image
+			WHERE key = $1
+			)`,
+		uuid.UUID(image).String(),
+	)
+	// imageExists := &bool{}
+	var imageExists *bool
+	err := row.Scan(
+		&imageExists,
+	)
+	if err != nil {
+		log.Println("error during sql check: ", err)
+		return false
+	}
+	return *imageExists
+}
+
+func (m *imageModel) putImage(newImage *Image) error {
+	_, err := m.repoConnection.pg.DB.Exec(
+		`INSERT INTO image (key, filepath) VALUES (
+			$1, $2
+			)`,
+		uuid.UUID(newImage.Key).String(),
+		newImage.FilePath,
+	)
+	return err
+}
+
+func newImageModel(repoConnection *repoHandler) *imageModel {
+	return &imageModel{
+		repoConnection: repoConnection,
+	}
+}
+
 type modelContext struct {
 	repoConnection *repoHandler
 	boardModel     *boardModel
 	threadModel    *threadModel
 	postModel      *postModel
 	authorModel    *authorModel
+	imageModel     *imageModel
 }
 
 var context *modelContext
@@ -838,6 +939,7 @@ func getmodelContext() *modelContext {
 			threadModel:    newThreadModel(repoHnd),
 			postModel:      newPostModel(repoHnd),
 			authorModel:    newAuthorModel(repoHnd),
+			imageModel:     newImageModel(repoHnd),
 		}
 	})
 

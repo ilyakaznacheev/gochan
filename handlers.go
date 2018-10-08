@@ -1,9 +1,17 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"errors"
 	"html/template"
+	"io"
 	"log"
+	"math/rand"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -13,10 +21,9 @@ import (
 
 const (
 	templatePath = "static/template/"
+	imgPath      = "media/img/"
 	timeFormat   = "Mon _2 Jan 2006 15:04:05"
 )
-
-var modelCtxShared *modelContext
 
 // MainRepr is a context for main.html template
 type MainRepr struct {
@@ -26,9 +33,11 @@ type MainRepr struct {
 
 // BoardRepr is a context for board.html template
 type BoardRepr struct {
-	Key   string
-	Title string
-	Time  string
+	Key       string
+	Title     string
+	Time      string
+	ImagePath string
+	HasImage  bool
 }
 
 // BoardReprInfo is a part of board template context
@@ -39,11 +48,13 @@ type BoardReprInfo struct {
 
 // PostRepr is a context for post.html template
 type PostRepr struct {
-	Key    string
-	Author string
-	Time   string
-	Text   string
-	IsOP   bool
+	Key       string
+	Author    string
+	Time      string
+	Text      string
+	IsOP      bool
+	ImagePath string
+	HasImage  bool
 }
 
 // ThreadReprBoard is a part of thread template context
@@ -65,19 +76,95 @@ type ThreadRepr struct {
 	Posts  []PostRepr
 }
 
-func getModelCtx() *modelContext {
-	if modelCtxShared == nil {
-		modelCtxShared = getmodelContext()
+// RequestHandler is a common request handler interface
+type RequestHandler interface {
+	MainPage(http.ResponseWriter, *http.Request)
+	BoardPage(http.ResponseWriter, *http.Request)
+	ThreadPage(http.ResponseWriter, *http.Request)
+	AddMessage(http.ResponseWriter, *http.Request)
+	AddThread(http.ResponseWriter, *http.Request)
+	AuthorPage(http.ResponseWriter, *http.Request)
+	AdminPage(http.ResponseWriter, *http.Request)
+}
+
+// ChanRequestHandler handles http requests
+type ChanRequestHandler struct {
+	model *modelContext
+}
+
+func (rh *ChanRequestHandler) uploadImage(r *http.Request) (*uuid.UUID, error) {
+
+	file, handler, err := r.FormFile("picture")
+	if err != nil {
+		return nil, errors.New("picture doesn's load: " + err.Error())
 	}
-	return modelCtxShared
+
+	defer file.Close()
+
+	if handler.Size == 0 {
+		return nil, errors.New("file is empty")
+	}
+
+	tmpName := RandStringRunes(32)
+
+	// fileEndings, err := mime.ExtensionsByType(http.DetectContentType(fileBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	fileExt := path.Ext(handler.Filename)
+	tmpFile := filepath.Join(imgPath, tmpName+fileExt)
+	newFile, err := os.Create(tmpFile)
+	if err != nil {
+		return nil, errors.New("cant open file: " + err.Error())
+	}
+
+	hasher := md5.New()
+	_, err = io.Copy(newFile, io.TeeReader(file, hasher))
+	if err != nil {
+		return nil, errors.New("cant save file: " + err.Error())
+	}
+	newFile.Sync()
+	newFile.Close()
+
+	// md5Sum := hex.EncodeToString(hasher.Sum(nil))
+	md5SumHEX := make([]byte, hex.EncodedLen(len(hasher.Sum(nil))))
+	hex.Encode(md5SumHEX, hasher.Sum(nil))
+	fileUUID, err := uuid.ParseBytes(md5SumHEX)
+	if err != nil {
+		return nil, errors.New("cant generate uuid: " + err.Error())
+	}
+	md5Sum := fileUUID.String()
+
+	if rh.model.imageModel.isImageExist(imageKey(fileUUID)) {
+		os.Remove(tmpFile)
+		return &fileUUID, nil
+	}
+
+	realFile := filepath.Join(imgPath, md5Sum+fileExt)
+	err = os.Rename(tmpFile, realFile)
+	if err != nil {
+		return nil, errors.New("cant raname file: " + err.Error())
+	}
+
+	log.Println("new file upload:", realFile)
+
+	err = rh.model.imageModel.putImage(&Image{
+		Key:      imageKey(fileUUID),
+		FilePath: realFile,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &fileUUID, nil
 }
 
 // MainPage returns index page
-func MainPage(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) MainPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles(templatePath + "home.html"))
-	modelCtx := getModelCtx()
 
-	modelData := modelCtx.boardModel.getList()
+	modelData := rh.model.boardModel.getList()
 
 	ctxBoards := make([]MainRepr, 0, len(modelData))
 
@@ -93,17 +180,16 @@ func MainPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // BoardPage returns board page
-func BoardPage(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) BoardPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles(templatePath + "board.html"))
-	modelCtx := getModelCtx()
 	requestParams := mux.Vars(r)
 
-	boardData, err := modelCtx.boardModel.getItem(boardKey(requestParams["board"]))
+	boardData, err := rh.model.boardModel.getItem(boardKey(requestParams["board"]))
 	if err != nil {
 		log.Println(err)
 	}
 
-	modelData, err := modelCtx.threadModel.getTheadsByBoard(boardKey(requestParams["board"]))
+	modelData, err := rh.model.threadModel.getTheadsByBoard(boardKey(requestParams["board"]))
 	if err != nil {
 		log.Println(err)
 	}
@@ -112,9 +198,11 @@ func BoardPage(w http.ResponseWriter, r *http.Request) {
 
 	for _, threadItem := range modelData {
 		ctxThreads = append(ctxThreads, BoardRepr{
-			Key:   strconv.Itoa(int(threadItem.Key)),
-			Title: threadItem.Title,
-			Time:  threadItem.CreationDateTime.Format(timeFormat),
+			Key:       strconv.Itoa(int(threadItem.Key)),
+			Title:     threadItem.Title,
+			Time:      threadItem.CreationDateTime.Format(timeFormat),
+			ImagePath: threadItem.getImagePath(),
+			HasImage:  threadItem.ImagePath != nil,
 		})
 	}
 
@@ -125,28 +213,27 @@ func BoardPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // ThreadPage returns thread page
-func ThreadPage(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) ThreadPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles(templatePath + "thread.html"))
-	modelCtx := getModelCtx()
 	requestParams := mux.Vars(r)
 
 	threadIDReq, _ := strconv.Atoi(requestParams["id"])
 
-	threadData, err := modelCtx.threadModel.getThread(threadKey(threadIDReq))
+	threadData, err := rh.model.threadModel.getThread(threadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	boardData, err := modelCtx.boardModel.getItem(threadData.BoardName)
+	boardData, err := rh.model.boardModel.getItem(threadData.BoardName)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	postData, err := modelCtx.postModel.getPostsByThread(threadKey(threadIDReq))
+	postData, err := rh.model.postModel.getPostsByThread(threadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -166,11 +253,13 @@ func ThreadPage(w http.ResponseWriter, r *http.Request) {
 	for _, threadItem := range postData {
 
 		ctxThread.Posts = append(ctxThread.Posts, PostRepr{
-			Key:    string(threadItem.Key),
-			Author: string(threadItem.Author),
-			Time:   threadItem.CreationDateTime.Format(timeFormat),
-			Text:   threadItem.Text,
-			IsOP:   threadItem.Author == threadData.AuthorID,
+			Key:       strconv.Itoa(int(threadItem.Key)),
+			Author:    string(threadItem.Author),
+			Time:      threadItem.CreationDateTime.Format(timeFormat),
+			Text:      threadItem.Text,
+			IsOP:      threadItem.Author == threadData.AuthorID,
+			ImagePath: threadItem.getImagePath(),
+			HasImage:  threadItem.ImagePath != nil,
 		})
 	}
 
@@ -178,10 +267,17 @@ func ThreadPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddMessage adds new message to thread
-func AddMessage(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) AddMessage(w http.ResponseWriter, r *http.Request) {
 	requestParams := mux.Vars(r)
 	ThreadID, _ := strconv.Atoi(requestParams["id"])
 
+	// read file
+	fileUUID, err := rh.uploadImage(r)
+	if err != nil {
+		log.Println("error while file upload", err)
+	}
+
+	// check cookie
 	authorCookie, err := r.Cookie("author_id")
 
 	var AuthorID string
@@ -204,15 +300,15 @@ func AddMessage(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("New message by", AuthorID, inputText)
 
-	modelCtx := getModelCtx()
-
+	// save post data
 	newPost := Post{
 		Author:           authorKey(AuthorID),
 		Thread:           threadKey(ThreadID),
 		CreationDateTime: time.Now(),
 		Text:             inputText,
+		ImageKey:         fileUUID,
 	}
-	_, err = modelCtx.postModel.putPost(newPost)
+	_, err = rh.model.postModel.putPost(newPost)
 	if err != nil {
 		log.Println(err)
 	}
@@ -220,9 +316,15 @@ func AddMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddThread adds new thread
-func AddThread(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) AddThread(w http.ResponseWriter, r *http.Request) {
 	requestParams := mux.Vars(r)
 	BoardName := boardKey(requestParams["board"])
+
+	// read file
+	fileUUID, err := rh.uploadImage(r)
+	if err != nil {
+		log.Println("error whila file upload", err)
+	}
 
 	authorCookie, err := r.Cookie("author_id")
 
@@ -246,16 +348,15 @@ func AddThread(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("New thread by", AuthorID, inputTitle)
 
-	modelCtx := getModelCtx()
-
 	newThread := Thread{
 		Title:            inputTitle,
 		AuthorID:         authorKey(AuthorID),
 		BoardName:        BoardName,
 		CreationDateTime: time.Now(),
+		ImageKey:         fileUUID,
 	}
 
-	ThreadID, err := modelCtx.threadModel.putThread(newThread)
+	ThreadID, err := rh.model.threadModel.putThread(newThread)
 	if err != nil {
 		log.Println(err)
 	}
@@ -267,8 +368,9 @@ func AddThread(w http.ResponseWriter, r *http.Request) {
 		Thread:           threadKey(ThreadID),
 		CreationDateTime: time.Now(),
 		Text:             inputText,
+		ImageKey:         fileUUID,
 	}
-	_, err = modelCtx.postModel.putPost(newPost)
+	_, err = rh.model.postModel.putPost(newPost)
 	if err != nil {
 		log.Println(err)
 	}
@@ -276,14 +378,13 @@ func AddThread(w http.ResponseWriter, r *http.Request) {
 }
 
 // AuthorPage returns all messages by Author selected
-func AuthorPage(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) AuthorPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles(templatePath + "author.html"))
-	modelCtx := getModelCtx()
 	requestParams := mux.Vars(r)
 
 	AuthorID := authorKey(requestParams["author"])
 
-	authorData, err := modelCtx.postModel.getPostsByAuthor(AuthorID)
+	authorData, err := rh.model.postModel.getPostsByAuthor(AuthorID)
 	if err != nil {
 		log.Println(err)
 	}
@@ -295,11 +396,13 @@ func AuthorPage(w http.ResponseWriter, r *http.Request) {
 	for _, postItem := range authorData {
 
 		ctxThread.Posts = append(ctxThread.Posts, PostRepr{
-			Key:    string(postItem.Key),
-			Author: string(postItem.Author),
-			Time:   postItem.CreationDateTime.Format(timeFormat),
-			Text:   postItem.Text,
-			IsOP:   true,
+			Key:       strconv.Itoa(int(postItem.Key)),
+			Author:    string(postItem.Author),
+			Time:      postItem.CreationDateTime.Format(timeFormat),
+			Text:      postItem.Text,
+			IsOP:      true,
+			ImagePath: postItem.getImagePath(),
+			HasImage:  postItem.ImagePath != nil,
 		})
 	}
 
@@ -307,6 +410,21 @@ func AuthorPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // AdminPage loads admin cockpit
-func AdminPage(w http.ResponseWriter, r *http.Request) {
+func (rh *ChanRequestHandler) AdminPage(w http.ResponseWriter, r *http.Request) {
 
+}
+
+func newRequestHandler(model *modelContext) RequestHandler {
+	return &ChanRequestHandler{model}
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+// RandStringRunes returns random string of given length
+func RandStringRunes(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }

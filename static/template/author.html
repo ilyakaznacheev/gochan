@@ -7,6 +7,9 @@
     {{ range .Posts}}
         <h3><a href="/{{ .Key }}">{{ .Key }}</a></h3><br>
         <p>{{ .Key }}</p> <time>{{ .Time }}</time><br>
+        {{ if .HasImage }}<a href="/{{ .ImagePath }}">
+            <img src="/{{ .ImagePath }}" width="100px" height="100px">
+        </a>{{ end }}
         <p>{{ .Text }}</p><br><br>
     {{end}}
     </body>

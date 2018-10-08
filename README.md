@@ -7,6 +7,7 @@
 - Built-in template usage
 - Logging
 - Caching
+- Images
 
 ### What is planned to do:
 
@@ -16,4 +17,3 @@
 - GraphQL
 - Some hot updates via WS
 - Admin page
-- Images!!

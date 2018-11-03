@@ -258,21 +258,23 @@ func (m *boardModel) getItem(name boardKey) (*Board, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redBoardKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redBoardKey)
 
-	newCachedData, err := json.Marshal(boardItem)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redBoardKey,
-		string(name),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		newCachedData, err := json.Marshal(boardItem)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redBoardKey,
+			string(name),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return boardItem, nil
 }
@@ -357,25 +359,27 @@ func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*Thread, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadBoardKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadBoardKey)
 
-	threadListCache = make([]Thread, 0, len(threadList))
-	for idx := range threadList {
-		threadListCache = append(threadListCache, *threadList[idx])
-	}
-	newCachedData, err := json.Marshal(&threadListCache)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redThreadBoardKey,
-		string(boardName),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		threadListCache = make([]Thread, 0, len(threadList))
+		for idx := range threadList {
+			threadListCache = append(threadListCache, *threadList[idx])
+		}
+		newCachedData, err := json.Marshal(&threadListCache)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redThreadBoardKey,
+			string(boardName),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return threadList, nil
 }
@@ -431,25 +435,27 @@ func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*Thread, error) 
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadAuthorKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadAuthorKey)
 
-	threadListCache = make([]Thread, 0, len(threadList))
-	for idx := range threadList {
-		threadListCache = append(threadListCache, *threadList[idx])
-	}
-	newCachedData, err := json.Marshal(&threadListCache)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redThreadAuthorKey,
-		string(authorID),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		threadListCache = make([]Thread, 0, len(threadList))
+		for idx := range threadList {
+			threadListCache = append(threadListCache, *threadList[idx])
+		}
+		newCachedData, err := json.Marshal(&threadListCache)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redThreadAuthorKey,
+			string(authorID),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return threadList, nil
 }
@@ -488,21 +494,23 @@ func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redThreadKey)
 
-	newCachedData, err := json.Marshal(threadItem)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redThreadKey,
-		threadID.String(),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		newCachedData, err := json.Marshal(threadItem)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redThreadKey,
+			threadID.String(),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return threadItem, nil
 }
@@ -533,9 +541,11 @@ func (m *threadModel) putThread(newThread Thread) (threadKey, error) {
 	}
 
 	// update cache version
-	m.repoConnection.redis.updateChangeCounter(redThreadBoardKey)
-	m.repoConnection.redis.updateChangeCounter(redThreadAuthorKey)
-	m.repoConnection.redis.updateChangeCounter(redThreadKey)
+	go func() {
+		m.repoConnection.redis.updateChangeCounter(redThreadBoardKey)
+		m.repoConnection.redis.updateChangeCounter(redThreadAuthorKey)
+		m.repoConnection.redis.updateChangeCounter(redThreadKey)
+	}()
 
 	return index, nil
 }
@@ -620,25 +630,27 @@ func (m *postModel) getPostsByThread(threadID threadKey) ([]*Post, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostThreadKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostThreadKey)
 
-	postListCache = make([]Post, 0, len(postList))
-	for idx := range postList {
-		postListCache = append(postListCache, *postList[idx])
-	}
-	newCachedData, err := json.Marshal(&postListCache)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redPostThreadKey,
-		threadID.String(),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		postListCache = make([]Post, 0, len(postList))
+		for idx := range postList {
+			postListCache = append(postListCache, *postList[idx])
+		}
+		newCachedData, err := json.Marshal(&postListCache)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redPostThreadKey,
+			threadID.String(),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return postList, nil
 }
@@ -694,25 +706,27 @@ func (m *postModel) getPostsByAuthor(AuthorID authorKey) ([]*Post, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostAuthorKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostAuthorKey)
 
-	postListCache = make([]Post, 0, len(postList))
-	for idx := range postList {
-		postListCache = append(postListCache, *postList[idx])
-	}
-	newCachedData, err := json.Marshal(&postListCache)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redPostAuthorKey,
-		string(AuthorID),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		postListCache = make([]Post, 0, len(postList))
+		for idx := range postList {
+			postListCache = append(postListCache, *postList[idx])
+		}
+		newCachedData, err := json.Marshal(&postListCache)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redPostAuthorKey,
+			string(AuthorID),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return postList, nil
 }
@@ -751,21 +765,23 @@ func (m *postModel) getPost(postID postKey) (*Post, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redPostKey)
 
-	newCachedData, err := json.Marshal(postItem)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redPostKey,
-		postID.String(),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		newCachedData, err := json.Marshal(postItem)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redPostKey,
+			postID.String(),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return postItem, nil
 }
@@ -794,9 +810,11 @@ func (m *postModel) putPost(newPost Post) (postKey, error) {
 		return 0, err
 	}
 
-	m.repoConnection.redis.updateChangeCounter(redPostAuthorKey)
-	m.repoConnection.redis.updateChangeCounter(redPostThreadKey)
-	m.repoConnection.redis.updateChangeCounter(redPostKey)
+	go func() {
+		m.repoConnection.redis.updateChangeCounter(redPostAuthorKey)
+		m.repoConnection.redis.updateChangeCounter(redPostThreadKey)
+		m.repoConnection.redis.updateChangeCounter(redPostKey)
+	}()
 
 	return index, nil
 }
@@ -844,21 +862,23 @@ func (m *authorModel) getAuthor(authorID authorKey) (*Author, error) {
 	}
 
 	// update cache
-	cacheVersion := m.repoConnection.redis.updateChangeCounter(redAuthorKey)
+	go func() {
+		cacheVersion := m.repoConnection.redis.updateChangeCounter(redAuthorKey)
 
-	newCachedData, err := json.Marshal(authorItem)
-	if err != nil {
-		log.Panic(err)
-	}
-	err = m.repoConnection.redis.set(
-		redAuthorKey,
-		string(authorID),
-		string(newCachedData),
-		cacheVersion,
-	)
-	if err != nil {
-		log.Panic(err)
-	}
+		newCachedData, err := json.Marshal(authorItem)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = m.repoConnection.redis.set(
+			redAuthorKey,
+			string(authorID),
+			string(newCachedData),
+			cacheVersion,
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	return authorItem, nil
 }

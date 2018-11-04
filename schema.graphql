@@ -1,0 +1,68 @@
+schema {
+    query: Query
+    mutation: Mutation
+}
+
+type Query {
+    # home page with board list
+    getHome(): Home
+    # board page with thread list
+    getBoard(id: String!): Board
+    # thread page with post list
+    getThread(id: ID!): Thread
+    # post
+    getPost(id: ID): Post
+    # author page with post list
+    getAuthor(id: String!): Author
+}
+
+type Mutation {
+    addPost(threadID: ID!, post: PostInput!): Post
+    addThread(boardID: ID!, thread: ThreadInput!): Thread
+}
+
+type Home {
+    boards: [Board]
+}
+
+type Board {
+    id: String
+    title: String
+    threads: [Thread]
+}
+
+type Thread {
+    id: ID
+    title: String
+    head: Post
+    posts: [Post]
+    author: Author
+}
+
+type Post {
+    id: ID
+    text: String
+    img: Image
+    author: Author
+}
+
+type Author {
+    id: String
+    posts: [Post]
+}
+
+type Image {
+    URL: String
+}
+
+input PostInput {
+    title: String!
+    text: String!
+    # img: ImageInput!
+}
+
+input ThreadInput {
+    post: PostInput!
+}
+
+

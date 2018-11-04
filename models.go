@@ -945,7 +945,7 @@ type modelContext struct {
 	imageModel     *imageModel
 }
 
-var context *modelContext
+var mctx *modelContext
 var contextSingleton sync.Once
 
 func getmodelContext() *modelContext {
@@ -953,7 +953,7 @@ func getmodelContext() *modelContext {
 		config := getConfig()
 		repoHnd := newRepoHandler(config)
 
-		context = &modelContext{
+		mctx = &modelContext{
 			repoConnection: repoHnd,
 			boardModel:     newBoardModel(repoHnd),
 			threadModel:    newThreadModel(repoHnd),
@@ -963,5 +963,5 @@ func getmodelContext() *modelContext {
 		}
 	})
 
-	return context
+	return mctx
 }

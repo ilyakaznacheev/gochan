@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/gorilla/mux"
+	"github.com/graph-gophers/graphql-go/relay"
 )
 
 // gracefulShutdown handle program interrupt by user
@@ -27,7 +28,14 @@ func runServer() {
 	modelCtx := getmodelContext()
 	requestHandler := newRequestHandler(modelCtx)
 
+	schema, err := getSchema("./schema.graphql", modelCtx.repoConnection)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	router := mux.NewRouter()
+
+	router.Handle("/api", &relay.Handler{Schema: schema})
 
 	router.HandleFunc("/admin", requestHandler.AdminPage)
 	router.HandleFunc("/{board}", requestHandler.BoardPage).Methods("GET")
@@ -43,7 +51,7 @@ func runServer() {
 	gracefulShutdown()
 
 	log.Println("starting server...")
-	err := http.ListenAndServe(":8000", router)
+	err = http.ListenAndServe(":8000", router)
 	if err != nil {
 		log.Fatal(err)
 	}

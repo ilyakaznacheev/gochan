@@ -24,12 +24,12 @@ func (r *Resolver) GetBoard(ctx context.Context, args struct{ ID string }) (*Boa
 }
 
 // GetThread resolves getThread query
-func (r *Resolver) GetThread(ctx context.Context, args struct{ ID int32 }) (*ThreadReprGQL, error) {
+func (r *Resolver) GetThread(ctx context.Context, args struct{ ID *int32 }) (*ThreadReprGQL, error) {
 	return &ThreadReprGQL{}, nil
 }
 
 // GetPost resolves getPost query
-func (r *Resolver) GetPost(ctx context.Context, args struct{ ID int32 }) (*PostReprGQL, error) {
+func (r *Resolver) GetPost(ctx context.Context, args struct{ ID *int32 }) (*PostReprGQL, error) {
 	return &PostReprGQL{}, nil
 }
 

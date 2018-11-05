@@ -56,12 +56,12 @@ type Image {
 }
 
 input PostInput {
-    title: String!
     text: String!
     # img: ImageInput!
 }
 
 input ThreadInput {
+    title: String!
     post: PostInput!
 }
 

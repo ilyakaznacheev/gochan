@@ -11,7 +11,7 @@ type Query {
     # thread page with post list
     getThread(id: ID!): Thread
     # post
-    getPost(id: ID): Post
+    getPost(id: ID!): Post
     # author page with post list
     getAuthor(id: String!): Author
 }

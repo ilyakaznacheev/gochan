@@ -1,4 +1,4 @@
-package main
+package gochan
 
 import (
 	"crypto/md5"
@@ -136,7 +136,7 @@ func (rh *ChanRequestHandler) uploadImage(r *http.Request) (*uuid.UUID, error) {
 	}
 	md5Sum := fileUUID.String()
 
-	if rh.model.imageModel.isImageExist(imageKey(fileUUID)) {
+	if rh.model.imageModel.isImageExist(ImageKey(fileUUID)) {
 		os.Remove(tmpFile)
 		return &fileUUID, nil
 	}
@@ -150,7 +150,7 @@ func (rh *ChanRequestHandler) uploadImage(r *http.Request) (*uuid.UUID, error) {
 	log.Println("new file upload:", realFile)
 
 	err = rh.model.imageModel.putImage(&Image{
-		Key:      imageKey(fileUUID),
+		Key:      ImageKey(fileUUID),
 		FilePath: realFile,
 	})
 	if err != nil {
@@ -184,12 +184,12 @@ func (rh *ChanRequestHandler) BoardPage(w http.ResponseWriter, r *http.Request) 
 	tmpl := template.Must(template.ParseFiles(templatePath + "board.html"))
 	requestParams := mux.Vars(r)
 
-	boardData, err := rh.model.boardModel.getItem(boardKey(requestParams["board"]))
+	boardData, err := rh.model.boardModel.getItem(BoardKey(requestParams["board"]))
 	if err != nil {
 		log.Println(err)
 	}
 
-	modelData, err := rh.model.threadModel.getTheadsByBoard(boardKey(requestParams["board"]))
+	modelData, err := rh.model.threadModel.getTheadsByBoard(BoardKey(requestParams["board"]))
 	if err != nil {
 		log.Println(err)
 	}
@@ -219,7 +219,7 @@ func (rh *ChanRequestHandler) ThreadPage(w http.ResponseWriter, r *http.Request)
 
 	threadIDReq, _ := strconv.Atoi(requestParams["id"])
 
-	threadData, err := rh.model.threadModel.getThread(threadKey(threadIDReq))
+	threadData, err := rh.model.threadModel.getThread(ThreadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -233,7 +233,7 @@ func (rh *ChanRequestHandler) ThreadPage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	postData, err := rh.model.postModel.getPostsByThread(threadKey(threadIDReq))
+	postData, err := rh.model.postModel.getPostsByThread(ThreadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -302,8 +302,8 @@ func (rh *ChanRequestHandler) AddMessage(w http.ResponseWriter, r *http.Request)
 
 	// save post data
 	newPost := Post{
-		Author:           authorKey(AuthorID),
-		Thread:           threadKey(ThreadID),
+		Author:           AuthorKey(AuthorID),
+		Thread:           ThreadKey(ThreadID),
 		CreationDateTime: time.Now(),
 		Text:             inputText,
 		ImageKey:         fileUUID,
@@ -318,7 +318,7 @@ func (rh *ChanRequestHandler) AddMessage(w http.ResponseWriter, r *http.Request)
 // AddThread adds new thread
 func (rh *ChanRequestHandler) AddThread(w http.ResponseWriter, r *http.Request) {
 	requestParams := mux.Vars(r)
-	BoardName := boardKey(requestParams["board"])
+	BoardName := BoardKey(requestParams["board"])
 
 	// read file
 	fileUUID, err := rh.uploadImage(r)
@@ -350,7 +350,7 @@ func (rh *ChanRequestHandler) AddThread(w http.ResponseWriter, r *http.Request) 
 
 	newThread := Thread{
 		Title:            inputTitle,
-		AuthorID:         authorKey(AuthorID),
+		AuthorID:         AuthorKey(AuthorID),
 		BoardName:        BoardName,
 		CreationDateTime: time.Now(),
 		ImageKey:         fileUUID,
@@ -364,8 +364,8 @@ func (rh *ChanRequestHandler) AddThread(w http.ResponseWriter, r *http.Request) 
 	log.Println("New message by", AuthorID, inputText)
 
 	newPost := Post{
-		Author:           authorKey(AuthorID),
-		Thread:           threadKey(ThreadID),
+		Author:           AuthorKey(AuthorID),
+		Thread:           ThreadKey(ThreadID),
 		CreationDateTime: time.Now(),
 		Text:             inputText,
 		ImageKey:         fileUUID,
@@ -382,7 +382,7 @@ func (rh *ChanRequestHandler) AuthorPage(w http.ResponseWriter, r *http.Request)
 	tmpl := template.Must(template.ParseFiles(templatePath + "author.html"))
 	requestParams := mux.Vars(r)
 
-	AuthorID := authorKey(requestParams["author"])
+	AuthorID := AuthorKey(requestParams["author"])
 
 	authorData, err := rh.model.postModel.getPostsByAuthor(AuthorID)
 	if err != nil {

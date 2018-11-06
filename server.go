@@ -1,4 +1,4 @@
-package main
+package gochan
 
 import (
 	"log"
@@ -11,20 +11,27 @@ import (
 	"github.com/graph-gophers/graphql-go/relay"
 )
 
+// Server is a gochan server
+type Server struct {
+
+}
+
 // gracefulShutdown handle program interrupt by user
-func gracefulShutdown() {
+func (s * Server) gracefulShutdown(action func()) {
 	var signalChan = make(chan os.Signal)
 	signal.Notify(signalChan, syscall.SIGTERM)
 	signal.Notify(signalChan, syscall.SIGINT)
 
 	go func() {
 		<-signalChan
+		action()
 		log.Println("stopping server")
 		os.Exit(0)
 	}()
 }
 
-func runServer() {
+// Run starts server
+func (s * Server) Run() {
 	modelCtx := getmodelContext()
 	requestHandler := newRequestHandler(modelCtx)
 
@@ -48,15 +55,13 @@ func runServer() {
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	router.PathPrefix("/media/").Handler(http.StripPrefix("/media/", http.FileServer(http.Dir("./media"))))
 
-	gracefulShutdown()
+	s.gracefulShutdown(func (){
+		// todo: att shutdown actions
+	})
 
 	log.Println("starting server...")
 	err = http.ListenAndServe(":8000", router)
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func main() {
-	runServer()
 }

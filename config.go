@@ -1,4 +1,4 @@
-package main
+package gochan
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	configFile = "./config.json"
+	configFile = "config.json"
 )
 
 // ConfigData contains app configuration data

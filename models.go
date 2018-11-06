@@ -1,4 +1,4 @@
-package main
+package gochan
 
 import (
 	"database/sql"
@@ -34,6 +34,38 @@ var (
 	// ErrRedisCacheVersion error while redis cache version check
 	ErrRedisCacheVersion = errors.New("cache outdated")
 )
+
+// BoardModelDB is a board model DB interaction interface
+type BoardModelDB interface {
+	GetBoard(BoardKey) (*Board, error)
+}
+
+// ThreadModelDB is a thread model DB interaction interface
+type ThreadModelDB interface {
+	GetTheadsByBoard(BoardKey) ([]*Thread, error)
+	GetThreadsByAuthor(AuthorKey) ([]*Thread, error)
+	GetThread(ThreadKey) (*Thread, error)
+	PutThread(Thread) (ThreadKey, error)
+}
+
+// PostModelDB is a post model DB interaction interface
+type PostModelDB interface {
+	GetPostsByThread(ThreadKey) ([]*Post, error)
+	GetPostsByAuthor(AuthorKey) ([]*Post, error)
+	GetPost(PostKey) (*Post, error)
+	PutPost(Post) (PostKey, error)
+}
+
+// ImageModelDB is a image model DB interaction interface
+type ImageModelDB interface {
+	IsImageExist(ImageKey) bool
+	PutImage(*Image) error
+}
+
+// AuthorModelDB is a author model DB interaction interface
+type AuthorModelDB interface {
+	GetAuthor(AuthorKey) (*Author, error)
+}
 
 // RedisContainer is a redis main container structure
 type RedisContainer struct {
@@ -154,24 +186,24 @@ func newRepoHandler(config *ConfigData) *repoHandler {
 }
 
 type (
-	boardKey  string
-	threadKey int
-	postKey   int
-	authorKey string
-	imageKey  uuid.UUID
+	BoardKey  string
+	ThreadKey int
+	PostKey   int
+	AuthorKey string
+	ImageKey  uuid.UUID
 )
 
-func (key threadKey) String() string {
+func (key ThreadKey) String() string {
 	return fmt.Sprintf("%d", key)
 }
 
-func (key postKey) String() string {
+func (key PostKey) String() string {
 	return fmt.Sprintf("%d", key)
 }
 
 // Board is a db structure of board table
 type Board struct {
-	Key  boardKey
+	Key  BoardKey
 	Name string
 }
 
@@ -231,7 +263,7 @@ func (m *boardModel) getList() (boardList []*Board) {
 	return boardList
 }
 
-func (m *boardModel) getItem(name boardKey) (*Board, error) {
+func (m *boardModel) getItem(name BoardKey) (*Board, error) {
 	// read from cache
 	cachedData, err := m.repoConnection.redis.get(redBoardKey, string(name))
 	if err == nil {
@@ -287,10 +319,10 @@ func newBoardModel(repoConnection *repoHandler) *boardModel {
 
 // Thread is a db structure of thread table
 type Thread struct {
-	Key              threadKey
+	Key              ThreadKey
 	Title            string
-	AuthorID         authorKey
-	BoardName        boardKey
+	AuthorID         AuthorKey
+	BoardName        BoardKey
 	CreationDateTime time.Time
 	ImageKey         *uuid.UUID //sql.NullString
 	ImagePath        *string
@@ -308,7 +340,7 @@ type threadModel struct {
 	repoConnection *repoHandler
 }
 
-func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*Thread, error) {
+func (m *threadModel) getTheadsByBoard(boardName BoardKey) ([]*Thread, error) {
 	var (
 		threadListCache []Thread
 		threadList      []*Thread
@@ -384,7 +416,7 @@ func (m *threadModel) getTheadsByBoard(boardName boardKey) ([]*Thread, error) {
 	return threadList, nil
 }
 
-func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*Thread, error) {
+func (m *threadModel) getThreadsByAuthor(authorID AuthorKey) ([]*Thread, error) {
 	var (
 		threadListCache []Thread
 		threadList      []*Thread
@@ -460,7 +492,7 @@ func (m *threadModel) getThreadsByAuthor(authorID authorKey) ([]*Thread, error) 
 	return threadList, nil
 }
 
-func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
+func (m *threadModel) getThread(threadID ThreadKey) (*Thread, error) {
 	var threadCache *Thread
 	// read from cache
 	cachedData, err := m.repoConnection.redis.get(redThreadKey, threadID.String())
@@ -515,7 +547,7 @@ func (m *threadModel) getThread(threadID threadKey) (*Thread, error) {
 	return threadItem, nil
 }
 
-func (m *threadModel) putThread(newThread Thread) (threadKey, error) {
+func (m *threadModel) putThread(newThread Thread) (ThreadKey, error) {
 	var imageKeyStr *string
 	if newThread.ImageKey != nil {
 		strval := newThread.ImageKey.String()
@@ -533,7 +565,7 @@ func (m *threadModel) putThread(newThread Thread) (threadKey, error) {
 		imageKeyStr,
 	)
 
-	var index threadKey
+	var index ThreadKey
 
 	err := row.Scan(&index)
 	if err != nil {
@@ -558,9 +590,9 @@ func newThreadModel(repoConnection *repoHandler) *threadModel {
 
 // Post is a db structure of post table
 type Post struct {
-	Key              postKey
-	Author           authorKey
-	Thread           threadKey
+	Key              PostKey
+	Author           AuthorKey
+	Thread           ThreadKey
 	CreationDateTime time.Time
 	Text             string
 	ImageKey         *uuid.UUID //sql.NullString
@@ -579,7 +611,7 @@ type postModel struct {
 	repoConnection *repoHandler
 }
 
-func (m *postModel) getPostsByThread(threadID threadKey) ([]*Post, error) {
+func (m *postModel) getPostsByThread(threadID ThreadKey) ([]*Post, error) {
 	var (
 		postListCache []Post
 		postList      []*Post
@@ -655,7 +687,7 @@ func (m *postModel) getPostsByThread(threadID threadKey) ([]*Post, error) {
 	return postList, nil
 }
 
-func (m *postModel) getPostsByAuthor(AuthorID authorKey) ([]*Post, error) {
+func (m *postModel) getPostsByAuthor(AuthorID AuthorKey) ([]*Post, error) {
 	var (
 		postListCache []Post
 		postList      []*Post
@@ -731,7 +763,7 @@ func (m *postModel) getPostsByAuthor(AuthorID authorKey) ([]*Post, error) {
 	return postList, nil
 }
 
-func (m *postModel) getPost(postID postKey) (*Post, error) {
+func (m *postModel) getPost(postID PostKey) (*Post, error) {
 	var postCache *Post
 	// read from cache
 	cachedData, err := m.repoConnection.redis.get(redPostKey, postID.String())
@@ -786,7 +818,7 @@ func (m *postModel) getPost(postID postKey) (*Post, error) {
 	return postItem, nil
 }
 
-func (m *postModel) putPost(newPost Post) (postKey, error) {
+func (m *postModel) putPost(newPost Post) (PostKey, error) {
 	var imageKeyStr *string
 	if newPost.ImageKey != nil {
 		strval := newPost.ImageKey.String()
@@ -803,7 +835,7 @@ func (m *postModel) putPost(newPost Post) (postKey, error) {
 		imageKeyStr,
 	)
 
-	var index postKey
+	var index PostKey
 
 	err := row.Scan(&index)
 	if err != nil {
@@ -827,7 +859,7 @@ func newPostModel(repoConnection *repoHandler) *postModel {
 
 // Author is a db structure of author table
 type Author struct {
-	Key authorKey
+	Key AuthorKey
 	// AdminRole bool
 }
 
@@ -835,7 +867,7 @@ type authorModel struct {
 	repoConnection *repoHandler
 }
 
-func (m *authorModel) getAuthor(authorID authorKey) (*Author, error) {
+func (m *authorModel) getAuthor(authorID AuthorKey) (*Author, error) {
 	var authorCache *Author
 	// read from cache
 	cachedData, err := m.repoConnection.redis.get(redAuthorKey, string(authorID))
@@ -891,7 +923,7 @@ func newAuthorModel(repoConnection *repoHandler) *authorModel {
 
 // Image is a db structure of image table
 type Image struct {
-	Key      imageKey
+	Key      ImageKey
 	FilePath string
 }
 
@@ -899,7 +931,7 @@ type imageModel struct {
 	repoConnection *repoHandler
 }
 
-func (m *imageModel) isImageExist(image imageKey) bool {
+func (m *imageModel) isImageExist(image ImageKey) bool {
 	row := m.repoConnection.pg.DB.QueryRow(
 		`SELECT EXISTS( SELECT 1
 			FROM image

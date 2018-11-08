@@ -13,11 +13,23 @@ import (
 
 // Server is a gochan server
 type Server struct {
+	conf ConfigData
+}
 
+// NewServer creates a server instance
+func NewServer(conf *ConfigData) *Server {
+	var newConf ConfigData
+
+	if conf == nil {
+		newConf = getDefaultConfig()
+	} else {
+		newConf = *conf
+	}
+	return &Server{newConf}
 }
 
 // gracefulShutdown handle program interrupt by user
-func (s * Server) gracefulShutdown(action func()) {
+func (s *Server) gracefulShutdown(action func()) {
 	var signalChan = make(chan os.Signal)
 	signal.Notify(signalChan, syscall.SIGTERM)
 	signal.Notify(signalChan, syscall.SIGINT)
@@ -31,8 +43,8 @@ func (s * Server) gracefulShutdown(action func()) {
 }
 
 // Run starts server
-func (s * Server) Run() {
-	modelCtx := getmodelContext()
+func (s *Server) Run() {
+	modelCtx := getmodelContext(&s.conf)
 	requestHandler := newRequestHandler(modelCtx)
 
 	schema, err := getSchema("./schema.graphql", modelCtx.repoConnection)
@@ -55,7 +67,7 @@ func (s * Server) Run() {
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	router.PathPrefix("/media/").Handler(http.StripPrefix("/media/", http.FileServer(http.Dir("./media"))))
 
-	s.gracefulShutdown(func (){
+	s.gracefulShutdown(func() {
 		// todo: att shutdown actions
 	})
 

@@ -2,17 +2,12 @@ package gochan
 
 import (
 	"context"
-	"io/ioutil"
 
 	"github.com/graph-gophers/graphql-go"
 )
 
 func getSchema(filename string, rh *repoHandler) (*graphql.Schema, error) {
-	schemaFile, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	schemaRaw := string(schemaFile)
+	schemaRaw := GetRootSchema()
 
 	return graphql.MustParseSchema(schemaRaw, newResolver(rh)), nil
 }

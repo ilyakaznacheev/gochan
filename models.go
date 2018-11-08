@@ -980,9 +980,8 @@ type modelContext struct {
 var mctx *modelContext
 var contextSingleton sync.Once
 
-func getmodelContext() *modelContext {
+func getmodelContext(config *ConfigData) *modelContext {
 	contextSingleton.Do(func() {
-		config := getConfig()
 		repoHnd := newRepoHandler(config)
 
 		mctx = &modelContext{

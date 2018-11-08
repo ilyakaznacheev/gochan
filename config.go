@@ -1,47 +1,44 @@
 package gochan
 
-import (
-	"encoding/json"
-	"io/ioutil"
-	"log"
-)
-
 const (
-	configFile = "config.json"
+	configFile = "./config.json"
 )
 
 // ConfigData contains app configuration data
 type ConfigData struct {
-	Database struct {
-		User    string
-		Name    string
-		Pass    string
-		Address string
-		SSL     string
-	}
-	// map[string]string
-	Redis struct {
-		Address  string
-		Password string
-		DataBase int
-	}
+	Database ConfigDatabase
+	Redis    ConfigRedis
 }
 
-var config *ConfigData
+// ConfigDatabase contains database configuration data
+type ConfigDatabase struct {
+	User    string
+	Name    string
+	Pass    string
+	Address string
+	SSL     string
+}
 
-func getConfig() *ConfigData {
-	if config == nil {
-		file, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Fatal("config not found:", err)
-		}
+// ConfigRedis contains redis configuration data
+type ConfigRedis struct {
+	Address  string
+	Password string
+	DataBase int
+}
 
-		config = &ConfigData{}
-
-		err = json.Unmarshal(file, config)
-		if err != nil {
-			log.Fatal("config is corrupted:", err)
-		}
+func getDefaultConfig() ConfigData {
+	return ConfigData{
+		Database: ConfigDatabase{
+			User:    "gochanuser",
+			Pass:    "gochanpass",
+			Name:    "gochandb",
+			SSL:     "disable",
+			Address: "localhost",
+		},
+		Redis: ConfigRedis{
+			Address:  "localhost:6379",
+			Password: "",
+			DataBase: 0,
+		},
 	}
-	return config
 }

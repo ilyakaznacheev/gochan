@@ -1,8 +1,4 @@
-package gochan
-
-const (
-	configFile = "./config.json"
-)
+package config
 
 // ConfigData contains app configuration data
 type ConfigData struct {
@@ -26,7 +22,7 @@ type ConfigRedis struct {
 	DataBase int
 }
 
-func getDefaultConfig() ConfigData {
+func GetDefaultConfig() ConfigData {
 	return ConfigData{
 		Database: ConfigDatabase{
 			User:    "gochanuser",

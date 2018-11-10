@@ -2,14 +2,16 @@ package gochan
 
 import (
 	"context"
+
+	"github.com/ilyakaznacheev/gochan/model"
 )
 
 // Resolver resolvers GraphQL requests
 type Resolver struct {
-	rh *repoHandler
+	rh *model.RepoHandler
 }
 
-func newResolver(rh *repoHandler) *Resolver {
+func newResolver(rh *model.RepoHandler) *Resolver {
 	return &Resolver{rh}
 }
 

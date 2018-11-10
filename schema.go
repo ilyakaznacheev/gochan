@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/graph-gophers/graphql-go"
+	"github.com/ilyakaznacheev/gochan/model"
 )
 
-func getSchema(filename string, rh *repoHandler) (*graphql.Schema, error) {
+func getSchema(filename string, rh *model.RepoHandler) (*graphql.Schema, error) {
 	schemaRaw := GetRootSchema()
 
 	return graphql.MustParseSchema(schemaRaw, newResolver(rh)), nil

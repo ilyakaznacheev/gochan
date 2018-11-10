@@ -8,21 +8,21 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq" // use Postgres driver
 
-	"github.com/ilyakaznacheev/gochan"
+	"github.com/ilyakaznacheev/gochan/model"
 )
 
-// BoardModel is a board table DAC
-type BoardModel struct {
+// BoardDAC is a board table DAC
+type BoardDAC struct {
 	db *sql.DB
 }
 
-// NewBoardModel creates BoardModel instance
-func NewBoardModel(db *sql.DB) *BoardModel {
-	return &BoardModel{db}
+// NewBoardDAC creates BoardDAC instance
+func NewBoardDAC(db *sql.DB) *BoardDAC {
+	return &BoardDAC{db}
 }
 
 // GetBoard returns board data
-func (m *BoardModel) GetBoard(key gochan.BoardKey) (*gochan.Board, error) {
+func (m *BoardDAC) GetBoard(key model.BoardKey) (*model.Board, error) {
 	row := m.db.QueryRow(
 		`SELECT key, name 
 			FROM board
@@ -30,7 +30,7 @@ func (m *BoardModel) GetBoard(key gochan.BoardKey) (*gochan.Board, error) {
 		key,
 	)
 
-	boardItem := &gochan.Board{}
+	boardItem := &model.Board{}
 	err := row.Scan(
 		&boardItem.Key,
 		&boardItem.Name,
@@ -39,18 +39,18 @@ func (m *BoardModel) GetBoard(key gochan.BoardKey) (*gochan.Board, error) {
 	return boardItem, err
 }
 
-// ThreadModel is a thread table DAC
-type ThreadModel struct {
+// ThreadDAC is a thread table DAC
+type ThreadDAC struct {
 	db *sql.DB
 }
 
-// NewThreadModel creates ThreadModel instance
-func NewThreadModel(db *sql.DB) *ThreadModel {
-	return &ThreadModel{db}
+// NewThreadDAC creates ThreadDAC instance
+func NewThreadDAC(db *sql.DB) *ThreadDAC {
+	return &ThreadDAC{db}
 }
 
 // GetTheadsByBoard returns threads of certain board
-func (m *ThreadModel) GetTheadsByBoard(boardName gochan.BoardKey) ([]*gochan.Thread, error) {
+func (m *ThreadDAC) GetTheadsByBoard(boardName model.BoardKey) ([]*model.Thread, error) {
 	rows, err := m.db.Query(
 		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
 			FROM thread
@@ -63,9 +63,9 @@ func (m *ThreadModel) GetTheadsByBoard(boardName gochan.BoardKey) ([]*gochan.Thr
 		return nil, err
 	}
 
-	threadList := make([]*gochan.Thread, 0)
+	threadList := make([]*model.Thread, 0)
 	for rows.Next() {
-		threadItem := &gochan.Thread{}
+		threadItem := &model.Thread{}
 		err = rows.Scan(
 			&threadItem.Key,
 			&threadItem.Title,
@@ -85,7 +85,7 @@ func (m *ThreadModel) GetTheadsByBoard(boardName gochan.BoardKey) ([]*gochan.Thr
 }
 
 // GetThreadsByAuthor returns threads of certain author
-func (m *ThreadModel) GetThreadsByAuthor(authorKey gochan.AuthorKey) ([]*gochan.Thread, error) {
+func (m *ThreadDAC) GetThreadsByAuthor(authorKey model.AuthorKey) ([]*model.Thread, error) {
 	rows, err := m.db.Query(
 		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
 			FROM thread
@@ -98,9 +98,9 @@ func (m *ThreadModel) GetThreadsByAuthor(authorKey gochan.AuthorKey) ([]*gochan.
 		return nil, err
 	}
 
-	threadList := make([]*gochan.Thread, 0)
+	threadList := make([]*model.Thread, 0)
 	for rows.Next() {
-		threadItem := &gochan.Thread{}
+		threadItem := &model.Thread{}
 		err = rows.Scan(
 			&threadItem.Key,
 			&threadItem.Title,
@@ -120,7 +120,7 @@ func (m *ThreadModel) GetThreadsByAuthor(authorKey gochan.AuthorKey) ([]*gochan.
 }
 
 // GetThread returns thread data
-func (m *ThreadModel) GetThread(threadKey gochan.ThreadKey) (*gochan.Thread, error) {
+func (m *ThreadDAC) GetThread(threadKey model.ThreadKey) (*model.Thread, error) {
 	row := m.db.QueryRow(
 		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
 			FROM thread
@@ -129,7 +129,7 @@ func (m *ThreadModel) GetThread(threadKey gochan.ThreadKey) (*gochan.Thread, err
 			WHERE thread.key = $1`,
 		threadKey,
 	)
-	threadItem := &gochan.Thread{}
+	threadItem := &model.Thread{}
 	err := row.Scan(
 		&threadItem.Key,
 		&threadItem.Title,
@@ -145,7 +145,7 @@ func (m *ThreadModel) GetThread(threadKey gochan.ThreadKey) (*gochan.Thread, err
 }
 
 // PutThread creates new thread
-func (m *ThreadModel) PutThread(newThread gochan.Thread) (gochan.ThreadKey, error) {
+func (m *ThreadDAC) PutThread(newThread model.Thread) (model.ThreadKey, error) {
 	var imageKeyStr *string
 	if newThread.ImageKey != nil {
 		strval := newThread.ImageKey.String()
@@ -163,7 +163,7 @@ func (m *ThreadModel) PutThread(newThread gochan.Thread) (gochan.ThreadKey, erro
 		imageKeyStr,
 	)
 
-	var index gochan.ThreadKey
+	var index model.ThreadKey
 
 	err := row.Scan(&index)
 	if err != nil {
@@ -172,18 +172,18 @@ func (m *ThreadModel) PutThread(newThread gochan.Thread) (gochan.ThreadKey, erro
 	return index, nil
 }
 
-// PostModel is a post table DAC
-type PostModel struct {
+// PostDAC is a post table DAC
+type PostDAC struct {
 	db *sql.DB
 }
 
-// NewPostModel creates PostModel instance
-func NewPostModel(db *sql.DB) *PostModel {
-	return &PostModel{db}
+// NewPostDAC creates PostDAC instance
+func NewPostDAC(db *sql.DB) *PostDAC {
+	return &PostDAC{db}
 }
 
 // GetPostsByThread returns posts of certain thread
-func (m *PostModel) GetPostsByThread(threadKey gochan.ThreadKey) ([]*gochan.Post, error) {
+func (m *PostDAC) GetPostsByThread(threadKey model.ThreadKey) ([]*model.Post, error) {
 	rows, err := m.db.Query(
 		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
 			FROM post
@@ -196,9 +196,9 @@ func (m *PostModel) GetPostsByThread(threadKey gochan.ThreadKey) ([]*gochan.Post
 		return nil, err
 	}
 
-	postList := make([]*gochan.Post, 0)
+	postList := make([]*model.Post, 0)
 	for rows.Next() {
-		postItem := &gochan.Post{}
+		postItem := &model.Post{}
 		err = rows.Scan(
 			&postItem.Key,
 			&postItem.Author,
@@ -219,7 +219,7 @@ func (m *PostModel) GetPostsByThread(threadKey gochan.ThreadKey) ([]*gochan.Post
 }
 
 // GetPostsByAuthor returns posts of certain author
-func (m *PostModel) GetPostsByAuthor(authorKey gochan.AuthorKey) ([]*gochan.Post, error) {
+func (m *PostDAC) GetPostsByAuthor(authorKey model.AuthorKey) ([]*model.Post, error) {
 	rows, err := m.db.Query(
 		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
 			FROM post
@@ -232,9 +232,9 @@ func (m *PostModel) GetPostsByAuthor(authorKey gochan.AuthorKey) ([]*gochan.Post
 		return nil, err
 	}
 
-	postList := make([]*gochan.Post, 0)
+	postList := make([]*model.Post, 0)
 	for rows.Next() {
-		postItem := &gochan.Post{}
+		postItem := &model.Post{}
 		err = rows.Scan(
 			&postItem.Key,
 			&postItem.Author,
@@ -254,7 +254,7 @@ func (m *PostModel) GetPostsByAuthor(authorKey gochan.AuthorKey) ([]*gochan.Post
 }
 
 // GetPost returns post data
-func (m *PostModel) GetPost(postKey gochan.PostKey) (*gochan.Post, error) {
+func (m *PostDAC) GetPost(postKey model.PostKey) (*model.Post, error) {
 	row := m.db.QueryRow(
 		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
 			FROM post
@@ -263,7 +263,7 @@ func (m *PostModel) GetPost(postKey gochan.PostKey) (*gochan.Post, error) {
 			WHERE post.key = $1`,
 		postKey,
 	)
-	postItem := &gochan.Post{}
+	postItem := &model.Post{}
 	err := row.Scan(
 		&postItem.Key,
 		&postItem.Author,
@@ -279,7 +279,7 @@ func (m *PostModel) GetPost(postKey gochan.PostKey) (*gochan.Post, error) {
 }
 
 // PutPost creates a new post
-func (m *PostModel) PutPost(newPost gochan.Post) (gochan.PostKey, error) {
+func (m *PostDAC) PutPost(newPost model.Post) (model.PostKey, error) {
 	var imageKeyStr *string
 	if newPost.ImageKey != nil {
 		strval := newPost.ImageKey.String()
@@ -296,7 +296,7 @@ func (m *PostModel) PutPost(newPost gochan.Post) (gochan.PostKey, error) {
 		imageKeyStr,
 	)
 
-	var index gochan.PostKey
+	var index model.PostKey
 
 	err := row.Scan(&index)
 	if err != nil {
@@ -305,18 +305,18 @@ func (m *PostModel) PutPost(newPost gochan.Post) (gochan.PostKey, error) {
 	return index, nil
 }
 
-// ImageModel is a image table DAC
-type ImageModel struct {
+// ImageDAC is a image table DAC
+type ImageDAC struct {
 	db *sql.DB
 }
 
-// NewImageModel creates ImageModel instance
-func NewImageModel(db *sql.DB) *ImageModel {
-	return &ImageModel{db}
+// NewImageDAC creates ImageDAC instance
+func NewImageDAC(db *sql.DB) *ImageDAC {
+	return &ImageDAC{db}
 }
 
 // IsImageExist checks image existance by key
-func (m *ImageModel) IsImageExist(imageKey gochan.ImageKey) bool {
+func (m *ImageDAC) IsImageExist(imageKey model.ImageKey) bool {
 	row := m.db.QueryRow(
 		`SELECT EXISTS( SELECT 1
 			FROM image
@@ -337,7 +337,7 @@ func (m *ImageModel) IsImageExist(imageKey gochan.ImageKey) bool {
 }
 
 // PutImage creates a new image
-func (m *ImageModel) PutImage(newImage *gochan.Image) error {
+func (m *ImageDAC) PutImage(newImage *model.Image) error {
 	_, err := m.db.Exec(
 		`INSERT INTO image (key, filepath) VALUES (
 			$1, $2
@@ -348,25 +348,25 @@ func (m *ImageModel) PutImage(newImage *gochan.Image) error {
 	return err
 }
 
-// AuthorModel is a author table DAC
-type AuthorModel struct {
+// AuthorDAC is a author table DAC
+type AuthorDAC struct {
 	db *sql.DB
 }
 
-// NewAuthorModel creates AuthorModel instance
-func NewAuthorModel(db *sql.DB) *AuthorModel {
-	return &AuthorModel{db}
+// NewAuthorDAC creates AuthorDAC instance
+func NewAuthorDAC(db *sql.DB) *AuthorDAC {
+	return &AuthorDAC{db}
 }
 
 // GetAuthor returns author info
-func (m *AuthorModel) GetAuthor(authorKey gochan.AuthorKey) (*gochan.Author, error) {
+func (m *AuthorDAC) GetAuthor(authorKey model.AuthorKey) (*model.Author, error) {
 	row := m.db.QueryRow(
 		`SELECT Key
 				FROM author
 				WHERE key = $1`,
 		authorKey,
 	)
-	authorItem := &gochan.Author{}
+	authorItem := &model.Author{}
 	err := row.Scan(
 		&authorItem.Key,
 	)

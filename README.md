@@ -1,19 +1,16 @@
 # This is a minimalist imageboard written on Go
 
-### It just proves and tests some techniques, e.g.:
+### Roadmap
 
-- PostgreSQL integration
-- Gorilla multiplexer usage
-- Built-in template usage
-- Logging
-- Caching
-- Images
-
-### What is planned to do:
-
-- Unit tests
-- More multi-access stability
-- Modern React Frontend
-- GraphQL
-- Some hot updates via WS
-- Admin page
+- [x] PostgreSQL integration
+- [x] Gorilla multiplexer usage
+- [x] Built-in template usage
+- [x] Logging
+- [x] Caching
+- [x] Images
+- [ ] GraphQL
+- [ ] Unit tests
+- [ ] Admin page
+- [ ] More multi-access stability
+- [ ] Modern React Frontend
+- [ ] Some hot updates via WS

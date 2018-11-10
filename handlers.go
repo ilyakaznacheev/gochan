@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/ilyakaznacheev/gochan/model"
 )
 
 const (
@@ -136,7 +137,7 @@ func (rh *ChanRequestHandler) uploadImage(r *http.Request) (*uuid.UUID, error) {
 	}
 	md5Sum := fileUUID.String()
 
-	if rh.model.imageModel.isImageExist(ImageKey(fileUUID)) {
+	if rh.model.imageModel.IsImageExist(model.ImageKey(fileUUID)) {
 		os.Remove(tmpFile)
 		return &fileUUID, nil
 	}
@@ -149,8 +150,8 @@ func (rh *ChanRequestHandler) uploadImage(r *http.Request) (*uuid.UUID, error) {
 
 	log.Println("new file upload:", realFile)
 
-	err = rh.model.imageModel.putImage(&Image{
-		Key:      ImageKey(fileUUID),
+	err = rh.model.imageModel.PutImage(&model.Image{
+		Key:      model.ImageKey(fileUUID),
 		FilePath: realFile,
 	})
 	if err != nil {
@@ -164,7 +165,7 @@ func (rh *ChanRequestHandler) uploadImage(r *http.Request) (*uuid.UUID, error) {
 func (rh *ChanRequestHandler) MainPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles(templatePath + "home.html"))
 
-	modelData := rh.model.boardModel.getList()
+	modelData := rh.model.boardModel.GetList()
 
 	ctxBoards := make([]MainRepr, 0, len(modelData))
 
@@ -184,12 +185,12 @@ func (rh *ChanRequestHandler) BoardPage(w http.ResponseWriter, r *http.Request) 
 	tmpl := template.Must(template.ParseFiles(templatePath + "board.html"))
 	requestParams := mux.Vars(r)
 
-	boardData, err := rh.model.boardModel.getItem(BoardKey(requestParams["board"]))
+	boardData, err := rh.model.boardModel.GetItem(model.BoardKey(requestParams["board"]))
 	if err != nil {
 		log.Println(err)
 	}
 
-	modelData, err := rh.model.threadModel.getTheadsByBoard(BoardKey(requestParams["board"]))
+	modelData, err := rh.model.threadModel.GetTheadsByBoard(model.BoardKey(requestParams["board"]))
 	if err != nil {
 		log.Println(err)
 	}
@@ -201,7 +202,7 @@ func (rh *ChanRequestHandler) BoardPage(w http.ResponseWriter, r *http.Request) 
 			Key:       strconv.Itoa(int(threadItem.Key)),
 			Title:     threadItem.Title,
 			Time:      threadItem.CreationDateTime.Format(timeFormat),
-			ImagePath: threadItem.getImagePath(),
+			ImagePath: threadItem.GetImagePath(),
 			HasImage:  threadItem.ImagePath != nil,
 		})
 	}
@@ -219,21 +220,21 @@ func (rh *ChanRequestHandler) ThreadPage(w http.ResponseWriter, r *http.Request)
 
 	threadIDReq, _ := strconv.Atoi(requestParams["id"])
 
-	threadData, err := rh.model.threadModel.getThread(ThreadKey(threadIDReq))
+	threadData, err := rh.model.threadModel.GetThread(model.ThreadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	boardData, err := rh.model.boardModel.getItem(threadData.BoardName)
+	boardData, err := rh.model.boardModel.GetItem(threadData.BoardName)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	postData, err := rh.model.postModel.getPostsByThread(ThreadKey(threadIDReq))
+	postData, err := rh.model.postModel.GetPostsByThread(model.ThreadKey(threadIDReq))
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -258,7 +259,7 @@ func (rh *ChanRequestHandler) ThreadPage(w http.ResponseWriter, r *http.Request)
 			Time:      threadItem.CreationDateTime.Format(timeFormat),
 			Text:      threadItem.Text,
 			IsOP:      threadItem.Author == threadData.AuthorID,
-			ImagePath: threadItem.getImagePath(),
+			ImagePath: threadItem.GetImagePath(),
 			HasImage:  threadItem.ImagePath != nil,
 		})
 	}
@@ -301,14 +302,14 @@ func (rh *ChanRequestHandler) AddMessage(w http.ResponseWriter, r *http.Request)
 	log.Println("New message by", AuthorID, inputText)
 
 	// save post data
-	newPost := Post{
-		Author:           AuthorKey(AuthorID),
-		Thread:           ThreadKey(ThreadID),
+	newPost := model.Post{
+		Author:           model.AuthorKey(AuthorID),
+		Thread:           model.ThreadKey(ThreadID),
 		CreationDateTime: time.Now(),
 		Text:             inputText,
 		ImageKey:         fileUUID,
 	}
-	_, err = rh.model.postModel.putPost(newPost)
+	_, err = rh.model.postModel.PutPost(newPost)
 	if err != nil {
 		log.Println(err)
 	}
@@ -318,7 +319,7 @@ func (rh *ChanRequestHandler) AddMessage(w http.ResponseWriter, r *http.Request)
 // AddThread adds new thread
 func (rh *ChanRequestHandler) AddThread(w http.ResponseWriter, r *http.Request) {
 	requestParams := mux.Vars(r)
-	BoardName := BoardKey(requestParams["board"])
+	BoardName := model.BoardKey(requestParams["board"])
 
 	// read file
 	fileUUID, err := rh.uploadImage(r)
@@ -348,29 +349,29 @@ func (rh *ChanRequestHandler) AddThread(w http.ResponseWriter, r *http.Request) 
 
 	log.Println("New thread by", AuthorID, inputTitle)
 
-	newThread := Thread{
+	newThread := model.Thread{
 		Title:            inputTitle,
-		AuthorID:         AuthorKey(AuthorID),
+		AuthorID:         model.AuthorKey(AuthorID),
 		BoardName:        BoardName,
 		CreationDateTime: time.Now(),
 		ImageKey:         fileUUID,
 	}
 
-	ThreadID, err := rh.model.threadModel.putThread(newThread)
+	ThreadID, err := rh.model.threadModel.PutThread(newThread)
 	if err != nil {
 		log.Println(err)
 	}
 
 	log.Println("New message by", AuthorID, inputText)
 
-	newPost := Post{
-		Author:           AuthorKey(AuthorID),
-		Thread:           ThreadKey(ThreadID),
+	newPost := model.Post{
+		Author:           model.AuthorKey(AuthorID),
+		Thread:           model.ThreadKey(ThreadID),
 		CreationDateTime: time.Now(),
 		Text:             inputText,
 		ImageKey:         fileUUID,
 	}
-	_, err = rh.model.postModel.putPost(newPost)
+	_, err = rh.model.postModel.PutPost(newPost)
 	if err != nil {
 		log.Println(err)
 	}
@@ -382,9 +383,9 @@ func (rh *ChanRequestHandler) AuthorPage(w http.ResponseWriter, r *http.Request)
 	tmpl := template.Must(template.ParseFiles(templatePath + "author.html"))
 	requestParams := mux.Vars(r)
 
-	AuthorID := AuthorKey(requestParams["author"])
+	AuthorID := model.AuthorKey(requestParams["author"])
 
-	authorData, err := rh.model.postModel.getPostsByAuthor(AuthorID)
+	authorData, err := rh.model.postModel.GetPostsByAuthor(AuthorID)
 	if err != nil {
 		log.Println(err)
 	}
@@ -401,7 +402,7 @@ func (rh *ChanRequestHandler) AuthorPage(w http.ResponseWriter, r *http.Request)
 			Time:      postItem.CreationDateTime.Format(timeFormat),
 			Text:      postItem.Text,
 			IsOP:      true,
-			ImagePath: postItem.getImagePath(),
+			ImagePath: postItem.GetImagePath(),
 			HasImage:  postItem.ImagePath != nil,
 		})
 	}

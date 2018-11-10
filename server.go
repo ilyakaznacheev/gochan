@@ -9,19 +9,21 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/graph-gophers/graphql-go/relay"
+
+	"github.com/ilyakaznacheev/gochan/config"
 )
 
 // Server is a gochan server
 type Server struct {
-	conf ConfigData
+	conf config.ConfigData
 }
 
 // NewServer creates a server instance
-func NewServer(conf *ConfigData) *Server {
-	var newConf ConfigData
+func NewServer(conf *config.ConfigData) *Server {
+	var newConf config.ConfigData
 
 	if conf == nil {
-		newConf = getDefaultConfig()
+		newConf = config.GetDefaultConfig()
 	} else {
 		newConf = *conf
 	}

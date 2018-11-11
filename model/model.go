@@ -1,7 +1,6 @@
 package model
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +47,7 @@ var (
 
 // BoardModelDB is a board model DB interaction interface
 type BoardModelDB interface {
+	GetBoardList() ([]*Board, error)
 	GetBoard(BoardKey) (*Board, error)
 }
 
@@ -94,11 +94,13 @@ type Board struct {
 	Name string
 }
 
+// BoardModel is a board model
 type BoardModel struct {
 	repoConnection *RepoHandler
 	modelDAC       BoardModelDB
 }
 
+// NewBoardModel creates new BoardModel
 func NewBoardModel(repoConnection *RepoHandler, modelDAC BoardModelDB) *BoardModel {
 	return &BoardModel{
 		repoConnection: repoConnection,
@@ -106,6 +108,7 @@ func NewBoardModel(repoConnection *RepoHandler, modelDAC BoardModelDB) *BoardMod
 	}
 }
 
+// GetList returns all boards
 func (m *BoardModel) GetList() (boardList []*Board) {
 	var boardListCache []Board
 	// read from cache
@@ -122,17 +125,7 @@ func (m *BoardModel) GetList() (boardList []*Board) {
 	}
 
 	// read from db
-	rows, err := m.repoConnection.pg.DB.Query(`SELECT key, name FROM board`)
-	if err != nil {
-		panic(err)
-	}
-	boardList = make([]*Board, 0)
-	for rows.Next() {
-		boardItem := &Board{}
-		err = rows.Scan(&boardItem.Key, &boardItem.Name)
-		boardList = append(boardList, boardItem)
-	}
-	rows.Close()
+	boardList, _ = m.modelDAC.GetBoardList()
 
 	// update cache
 	cacheVersion := m.repoConnection.redis.updateChangeCounter(redBoardList)
@@ -158,6 +151,7 @@ func (m *BoardModel) GetList() (boardList []*Board) {
 	return boardList
 }
 
+// GetItem returns certain board by key
 func (m *BoardModel) GetItem(name BoardKey) (*Board, error) {
 	// read from cache
 	cachedData, err := m.repoConnection.redis.get(redBoardKey, string(name))
@@ -169,17 +163,7 @@ func (m *BoardModel) GetItem(name BoardKey) (*Board, error) {
 	}
 
 	// read from db
-	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT key, name 
-			FROM board
-			WHERE key = $1`,
-		name,
-	)
-	boardItem := &Board{}
-	err = row.Scan(
-		&boardItem.Key,
-		&boardItem.Name,
-	)
+	boardItem, err := m.modelDAC.GetBoard(name)
 	if err != nil {
 		return nil, err
 	}
@@ -219,19 +203,21 @@ type Thread struct {
 	ImagePath        *string
 }
 
+// GetImagePath returns path to image
 func (t *Thread) GetImagePath() string {
 	if t.ImagePath != nil {
 		return *t.ImagePath
-	} else {
-		return ""
 	}
+	return ""
 }
 
+// ThreadModel is a thread model
 type ThreadModel struct {
 	repoConnection *RepoHandler
 	modelDAC       ThreadModelDB
 }
 
+// NewThreadModel creates new ThreadModel
 func NewThreadModel(repoConnection *RepoHandler, modelDAC ThreadModelDB) *ThreadModel {
 	return &ThreadModel{
 		repoConnection: repoConnection,
@@ -239,6 +225,7 @@ func NewThreadModel(repoConnection *RepoHandler, modelDAC ThreadModelDB) *Thread
 	}
 }
 
+// GetTheadsByBoard returns threads by certain board
 func (m *ThreadModel) GetTheadsByBoard(boardName BoardKey) ([]*Thread, error) {
 	var (
 		threadListCache []Thread
@@ -258,35 +245,9 @@ func (m *ThreadModel) GetTheadsByBoard(boardName BoardKey) ([]*Thread, error) {
 	}
 
 	// read from db
-	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
-			FROM thread
-				LEFT OUTER JOIN image ON
-				(thread.image = image.key)
-			WHERE thread.boardname = $1`,
-		boardName,
-	)
+	threadList, err = m.modelDAC.GetTheadsByBoard(boardName)
 	if err != nil {
 		return nil, err
-	}
-
-	threadList = make([]*Thread, 0)
-	for rows.Next() {
-		threadItem := &Thread{}
-		err = rows.Scan(
-			&threadItem.Key,
-			&threadItem.Title,
-			&threadItem.AuthorID,
-			&threadItem.BoardName,
-			&threadItem.CreationDateTime,
-			&threadItem.ImagePath,
-		)
-		threadList = append(threadList, threadItem)
-	}
-	rows.Close()
-
-	if len(threadList) == 0 {
-		return nil, errors.New("no threads found with board name " + string(boardName))
 	}
 
 	// update cache
@@ -315,6 +276,7 @@ func (m *ThreadModel) GetTheadsByBoard(boardName BoardKey) ([]*Thread, error) {
 	return threadList, nil
 }
 
+// GetThreadsByAuthor returns threads by certain author
 func (m *ThreadModel) GetThreadsByAuthor(authorID AuthorKey) ([]*Thread, error) {
 	var (
 		threadListCache []Thread
@@ -334,35 +296,9 @@ func (m *ThreadModel) GetThreadsByAuthor(authorID AuthorKey) ([]*Thread, error) 
 	}
 
 	// read from db
-	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
-			FROM thread
-				LEFT OUTER JOIN image ON
-				(thread.image = image.key)
-			WHERE thread.authorid = $1`,
-		authorID,
-	)
+	threadList, err = m.modelDAC.GetThreadsByAuthor(authorID)
 	if err != nil {
 		return nil, err
-	}
-
-	threadList = make([]*Thread, 0)
-	for rows.Next() {
-		threadItem := &Thread{}
-		err = rows.Scan(
-			&threadItem.Key,
-			&threadItem.Title,
-			&threadItem.AuthorID,
-			&threadItem.BoardName,
-			&threadItem.CreationDateTime,
-			&threadItem.ImagePath,
-		)
-		threadList = append(threadList, threadItem)
-	}
-	rows.Close()
-
-	if len(threadList) == 0 {
-		return nil, errors.New("no threads found with author ID " + string(authorID))
 	}
 
 	// update cache
@@ -391,6 +327,7 @@ func (m *ThreadModel) GetThreadsByAuthor(authorID AuthorKey) ([]*Thread, error) 
 	return threadList, nil
 }
 
+// GetThread returns certain thread by key
 func (m *ThreadModel) GetThread(threadID ThreadKey) (*Thread, error) {
 	var threadCache *Thread
 	// read from cache
@@ -403,23 +340,7 @@ func (m *ThreadModel) GetThread(threadID ThreadKey) (*Thread, error) {
 	}
 
 	// read from db
-	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT thread.key, thread.title, thread.authorid, thread.boardname, thread.creationdatetime, image.filepath
-			FROM thread
-				LEFT OUTER JOIN image ON
-				(thread.image = image.key)
-			WHERE thread.key = $1`,
-		threadID,
-	)
-	threadItem := &Thread{}
-	err = row.Scan(
-		&threadItem.Key,
-		&threadItem.Title,
-		&threadItem.AuthorID,
-		&threadItem.BoardName,
-		&threadItem.CreationDateTime,
-		&threadItem.ImagePath,
-	)
+	threadItem, err := m.modelDAC.GetThread(threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -446,27 +367,9 @@ func (m *ThreadModel) GetThread(threadID ThreadKey) (*Thread, error) {
 	return threadItem, nil
 }
 
+// PutThread adds new post into db
 func (m *ThreadModel) PutThread(newThread Thread) (ThreadKey, error) {
-	var imageKeyStr *string
-	if newThread.ImageKey != nil {
-		strval := newThread.ImageKey.String()
-		imageKeyStr = &strval
-	}
-	row := m.repoConnection.pg.DB.QueryRow(
-		`INSERT INTO thread (key, title, authorid, boardname, creationdatetime, image ) VALUES (
-			nextval('thread_key_seq'),
-			$1, $2, $3, $4, $5
-			) RETURNING key;`,
-		newThread.Title,
-		newThread.AuthorID,
-		newThread.BoardName,
-		newThread.CreationDateTime,
-		imageKeyStr,
-	)
-
-	var index ThreadKey
-
-	err := row.Scan(&index)
+	index, err := m.modelDAC.PutThread(newThread)
 	if err != nil {
 		return 0, err
 	}
@@ -492,19 +395,21 @@ type Post struct {
 	ImagePath        *string
 }
 
+// GetImagePath returns path to image
 func (p *Post) GetImagePath() string {
 	if p.ImagePath != nil {
 		return *p.ImagePath
-	} else {
-		return ""
 	}
+	return ""
 }
 
+// PostModel is a post model
 type PostModel struct {
 	repoConnection *RepoHandler
 	modelDAC       PostModelDB
 }
 
+// NewPostModel creates new PostModel
 func NewPostModel(repoConnection *RepoHandler, modelDAC PostModelDB) *PostModel {
 	return &PostModel{
 		repoConnection: repoConnection,
@@ -512,6 +417,7 @@ func NewPostModel(repoConnection *RepoHandler, modelDAC PostModelDB) *PostModel 
 	}
 }
 
+// GetPostsByThread returns posts by certain thread
 func (m *PostModel) GetPostsByThread(threadID ThreadKey) ([]*Post, error) {
 	var (
 		postListCache []Post
@@ -531,35 +437,9 @@ func (m *PostModel) GetPostsByThread(threadID ThreadKey) ([]*Post, error) {
 	}
 
 	// read from db
-	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
-			FROM post
-				LEFT OUTER JOIN image ON
-				(post.image = image.key)
-			WHERE post.thread = $1`,
-		threadID,
-	)
+	postList, err = m.modelDAC.GetPostsByThread(threadID)
 	if err != nil {
 		return nil, err
-	}
-
-	postList = make([]*Post, 0)
-	for rows.Next() {
-		postItem := &Post{}
-		err = rows.Scan(
-			&postItem.Key,
-			&postItem.Author,
-			&postItem.Thread,
-			&postItem.CreationDateTime,
-			&postItem.Text,
-			&postItem.ImagePath,
-		)
-		postList = append(postList, postItem)
-	}
-	rows.Close()
-
-	if len(postList) == 0 {
-		return nil, errors.New("no posts found with Thread ID" + threadID.String())
 	}
 
 	// update cache
@@ -588,6 +468,7 @@ func (m *PostModel) GetPostsByThread(threadID ThreadKey) ([]*Post, error) {
 	return postList, nil
 }
 
+// GetPostsByAuthor returns posts by certain author
 func (m *PostModel) GetPostsByAuthor(AuthorID AuthorKey) ([]*Post, error) {
 	var (
 		postListCache []Post
@@ -607,35 +488,9 @@ func (m *PostModel) GetPostsByAuthor(AuthorID AuthorKey) ([]*Post, error) {
 	}
 
 	// read from db
-	rows, err := m.repoConnection.pg.DB.Query(
-		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
-			FROM post
-				LEFT OUTER JOIN image ON
-				(post.image = image.key)
-			WHERE post.author = $1`,
-		AuthorID,
-	)
+	postList, err = m.modelDAC.GetPostsByAuthor(AuthorID)
 	if err != nil {
 		return nil, err
-	}
-
-	postList = make([]*Post, 0)
-	for rows.Next() {
-		postItem := &Post{}
-		err = rows.Scan(
-			&postItem.Key,
-			&postItem.Author,
-			&postItem.Thread,
-			&postItem.CreationDateTime,
-			&postItem.Text,
-			&postItem.ImagePath,
-		)
-		postList = append(postList, postItem)
-	}
-	rows.Close()
-
-	if len(postList) == 0 {
-		return nil, errors.New("no posts found with Author ID " + string(AuthorID))
 	}
 
 	// update cache
@@ -664,6 +519,7 @@ func (m *PostModel) GetPostsByAuthor(AuthorID AuthorKey) ([]*Post, error) {
 	return postList, nil
 }
 
+// GetPost certain returns post by key
 func (m *PostModel) GetPost(postID PostKey) (*Post, error) {
 	var postCache *Post
 	// read from cache
@@ -676,23 +532,7 @@ func (m *PostModel) GetPost(postID PostKey) (*Post, error) {
 	}
 
 	// read from db
-	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT post.key, post.author, post.thread, post.creationdatetime, post.text, image.filepath
-			FROM post
-				LEFT OUTER JOIN image ON
-				(post.image = image.key)
-			WHERE post.key = $1`,
-		postID,
-	)
-	postItem := &Post{}
-	err = row.Scan(
-		&postItem.Key,
-		&postItem.Author,
-		&postItem.Thread,
-		&postItem.CreationDateTime,
-		&postItem.Text,
-		&postItem.ImagePath,
-	)
+	postItem, err := m.modelDAC.GetPost(postID)
 	if err != nil {
 		return nil, err
 	}
@@ -719,26 +559,9 @@ func (m *PostModel) GetPost(postID PostKey) (*Post, error) {
 	return postItem, nil
 }
 
+// PutPost adds new post into db
 func (m *PostModel) PutPost(newPost Post) (PostKey, error) {
-	var imageKeyStr *string
-	if newPost.ImageKey != nil {
-		strval := newPost.ImageKey.String()
-		imageKeyStr = &strval
-	}
-	row := m.repoConnection.pg.DB.QueryRow(
-		`INSERT INTO post (author, thread, creationdatetime, text, image) VALUES (
-			$1, $2, $3, $4, $5
-			) RETURNING key;`,
-		newPost.Author,
-		newPost.Thread,
-		newPost.CreationDateTime,
-		newPost.Text,
-		imageKeyStr,
-	)
-
-	var index PostKey
-
-	err := row.Scan(&index)
+	index, err := m.modelDAC.PutPost(newPost)
 	if err != nil {
 		return 0, err
 	}
@@ -760,11 +583,13 @@ type Author struct {
 	// AdminRole bool
 }
 
+// AuthorModel is an author model
 type AuthorModel struct {
 	repoConnection *RepoHandler
 	modelDAC       AuthorModelDB
 }
 
+// NewAuthorModel creates new AuthorModel
 func NewAuthorModel(repoConnection *RepoHandler, modelDAC AuthorModelDB) *AuthorModel {
 	return &AuthorModel{
 		repoConnection: repoConnection,
@@ -772,6 +597,7 @@ func NewAuthorModel(repoConnection *RepoHandler, modelDAC AuthorModelDB) *Author
 	}
 }
 
+// GetAuthor returns author data
 func (m *AuthorModel) GetAuthor(authorID AuthorKey) (*Author, error) {
 	var authorCache *Author
 	// read from cache
@@ -784,16 +610,7 @@ func (m *AuthorModel) GetAuthor(authorID AuthorKey) (*Author, error) {
 	}
 
 	// read from db
-	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT Key
-			FROM author
-			WHERE key = $1`,
-		authorID,
-	)
-	authorItem := &Author{}
-	err = row.Scan(
-		&authorItem.Key,
-	)
+	authorItem, err := m.modelDAC.GetAuthor(authorID)
 	if err != nil {
 		return nil, err
 	}
@@ -826,11 +643,13 @@ type Image struct {
 	FilePath string
 }
 
+// ImageModel is an image model
 type ImageModel struct {
 	repoConnection *RepoHandler
 	modelDAC       ImageModelDB
 }
 
+// NewImageModel returns new ImageModel
 func NewImageModel(repoConnection *RepoHandler, modelDAC ImageModelDB) *ImageModel {
 	return &ImageModel{
 		repoConnection: repoConnection,
@@ -838,35 +657,14 @@ func NewImageModel(repoConnection *RepoHandler, modelDAC ImageModelDB) *ImageMod
 	}
 }
 
+// IsImageExist returns image existance status
 func (m *ImageModel) IsImageExist(image ImageKey) bool {
-	row := m.repoConnection.pg.DB.QueryRow(
-		`SELECT EXISTS( SELECT 1
-			FROM image
-			WHERE key = $1
-			)`,
-		uuid.UUID(image).String(),
-	)
-	// imageExists := &bool{}
-	var imageExists *bool
-	err := row.Scan(
-		&imageExists,
-	)
-	if err != nil {
-		log.Println("error during sql check: ", err)
-		return false
-	}
-	return *imageExists
+	return m.modelDAC.IsImageExist(image)
 }
 
+// PutImage adds new image into table
 func (m *ImageModel) PutImage(newImage *Image) error {
-	_, err := m.repoConnection.pg.DB.Exec(
-		`INSERT INTO image (key, filepath) VALUES (
-			$1, $2
-			)`,
-		uuid.UUID(newImage.Key).String(),
-		newImage.FilePath,
-	)
-	return err
+	return m.modelDAC.PutImage(newImage)
 }
 
 // Redis
@@ -949,47 +747,16 @@ func newRedisClient(config *config.ConfigData) *redisClient {
 	return &redisClient{client}
 }
 
-type pgClient struct {
-	DB *sql.DB
-}
-
-func NewPGClient(config *config.ConfigData) (db *pgClient, err error) {
-
-	connStr := fmt.Sprintf(
-		"user=%s dbname=%s password=%s host=%s sslmode=%s",
-		config.Database.User,
-		config.Database.Name,
-		config.Database.Pass,
-		config.Database.Address,
-		config.Database.SSL,
-	)
-
-	dbConn, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, err
-	}
-	return &pgClient{dbConn}, nil
-}
-
+// RepoHandler is a repository handler
 type RepoHandler struct {
 	redis *redisClient
-	pg    *pgClient
 }
 
+// NewRepoHandler creates new repository handler
 func NewRepoHandler(config *config.ConfigData) *RepoHandler {
 	redis := newRedisClient(config)
-	pg, err := NewPGClient(config)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	return &RepoHandler{
 		redis: redis,
-		pg:    pg,
 	}
-}
-
-// TEMP!!!
-func (r *RepoHandler) GetDB() *sql.DB {
-	return r.pg.DB
 }

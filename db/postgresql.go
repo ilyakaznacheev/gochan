@@ -21,6 +21,22 @@ func NewBoardDAC(db *sql.DB) *BoardDAC {
 	return &BoardDAC{db}
 }
 
+// GetBoardList returns board list
+func (m *BoardDAC) GetBoardList() ([]*model.Board, error) {
+	rows, err := m.db.Query(`SELECT key, name FROM board`)
+	if err != nil {
+		return nil, err
+	}
+	boardList := make([]*model.Board, 0)
+	for rows.Next() {
+		boardItem := &model.Board{}
+		err = rows.Scan(&boardItem.Key, &boardItem.Name)
+		boardList = append(boardList, boardItem)
+	}
+	rows.Close()
+	return boardList, nil
+}
+
 // GetBoard returns board data
 func (m *BoardDAC) GetBoard(key model.BoardKey) (*model.Board, error) {
 	row := m.db.QueryRow(

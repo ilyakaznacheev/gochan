@@ -42,7 +42,8 @@ const (
 
 var (
 	// ErrRedisCacheVersion error while redis cache version check
-	ErrRedisCacheVersion = errors.New("cache outdated")
+	ErrRedisCacheVersion = errors.New("cache outdated") //todo: remove
+	ErrCacheOutdated     = errors.New("cache outdated")
 )
 
 // DB model interfaces

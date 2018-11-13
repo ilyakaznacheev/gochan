@@ -45,6 +45,8 @@ var (
 	ErrRedisCacheVersion = errors.New("cache outdated")
 )
 
+// DB model interfaces
+
 // BoardModelDB is a board model DB interaction interface
 type BoardModelDB interface {
 	GetBoardList() ([]*Board, error)
@@ -76,6 +78,44 @@ type ImageModelDB interface {
 // AuthorModelDB is a author model DB interaction interface
 type AuthorModelDB interface {
 	GetAuthor(AuthorKey) (*Author, error)
+}
+
+// Cache model interfaces
+
+// BoardModelCache is a board model cache interaction interface
+type BoardModelCache interface {
+	GetBoardList() ([]*Board, error)
+	GetBoard(BoardKey) (*Board, error)
+	SetBoardList([]*Board) error
+	SetBoard(BoardKey, *Board) error
+}
+
+// ThreadModelCache is a thread model cache interaction interface
+type ThreadModelCache interface {
+	GetTheadsByBoard(BoardKey) ([]*Thread, error)
+	GetThreadsByAuthor(AuthorKey) ([]*Thread, error)
+	GetThread(ThreadKey) (*Thread, error)
+	SetTheadsByBoard(BoardKey, []*Thread) error
+	SetThreadsByAuthor(AuthorKey, []*Thread) error
+	SetThread(ThreadKey, *Thread) error
+	InvalidateCache()
+}
+
+// PostModelCache is a post model cache interaction interface
+type PostModelCache interface {
+	GetPostsByThread(ThreadKey) ([]*Post, error)
+	GetPostsByAuthor(AuthorKey) ([]*Post, error)
+	GetPost(PostKey) (*Post, error)
+	InvalidateCache()
+	SetPostsByThread(ThreadKey, []*Post) error
+	SetPostsByAuthor(AuthorKey, []*Post) error
+	SetPost(PostKey, *Post) error
+}
+
+// AuthorModelCache is a author model cache interaction interface
+type AuthorModelCache interface {
+	GetAuthor(AuthorKey) (*Author, error)
+	SetAuthor(AuthorKey, *Author) error
 }
 
 func (key ThreadKey) String() string {
